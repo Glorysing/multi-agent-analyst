@@ -89,11 +89,11 @@ pip install -r requirements.txt
 .venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
 ```
 
-**CLI 烟测** (不开浏览器,纯命令行验证 Agent 能跑通):
+**CLI 烟测** (不开浏览器,纯命令行验证 Agent 能跑通,用你自己的 CSV):
 ```powershell
-.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv                 # 中文输出
-.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv --lang en       # 英文
-.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv "找出销售异常点"
+.venv\Scripts\python.exe app_cli.py path\to\your.csv                 # 中文输出
+.venv\Scripts\python.exe app_cli.py path\to\your.csv --lang en       # 英文
+.venv\Scripts\python.exe app_cli.py path\to\your.csv "找出销售异常点"
 ```
 看到终端依次打印 Planner / Coder / Executor / Reviewer / Reporter 完成,最后出现一份 Markdown 报告即 OK。
 
@@ -154,8 +154,6 @@ multi-agent-analyst/
 │   └── main.py                 # FastAPI + SSE
 ├── frontend/
 │   └── index.html              # 单文件前端
-├── examples/
-│   └── sample_sales.csv        # 500 行模拟销售数据
 ├── outputs/                    # 图表 + 临时脚本 + 上传文件 (运行时自动生成)
 ├── app_cli.py                  # CLI 调试入口 (支持 --lang)
 ├── launch.py                   # 跨平台启动器: 起 uvicorn + 轮询 /healthz + 开浏览器

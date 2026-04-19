@@ -79,8 +79,8 @@ and set `LLM_PROVIDER` + the corresponding API key. No code changes required.
 ### CLI smoke test
 
 ```bash
-python app_cli.py examples/sample_sales.csv
-python app_cli.py examples/sample_sales.csv "Find sales anomalies" --lang en
+python app_cli.py path/to/your.csv
+python app_cli.py path/to/your.csv "Find sales anomalies" --lang en
 ```
 
 ### Web UI
@@ -142,8 +142,6 @@ multi-agent-analyst/
 │   └── main.py                  # FastAPI + SSE
 ├── frontend/
 │   └── index.html               # single-file frontend with language switch
-├── examples/
-│   └── sample_sales.csv         # 500-row mock sales data
 ├── outputs/                     # charts + temp scripts + uploads (auto-generated)
 ├── app_cli.py                   # CLI entry (supports --lang)
 ├── launch.py                    # cross-platform launcher: uvicorn + healthz poll + browser

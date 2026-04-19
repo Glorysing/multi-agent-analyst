@@ -2,11 +2,10 @@
 CLI 入口 —— 不依赖 FastAPI, 用于本地调试 / 烟测。
 
 用法:
-    python app_cli.py                                     # 用默认 sample_sales.csv + 默认目标
-    python app_cli.py examples/sample_sales.csv
+    python app_cli.py path/to/data.csv
     python app_cli.py path/to/data.csv "找出销售异常点"
-    python app_cli.py examples/sample_sales.csv "Find sales anomalies" --lang en
-    python app_cli.py examples/sample_sales.csv --lang zh
+    python app_cli.py path/to/data.csv "Find sales anomalies" --lang en
+    python app_cli.py path/to/data.csv --lang zh
 
 语言 (--lang) 默认读环境变量 OUTPUT_LANGUAGE, 未设置则 zh。
 """
@@ -74,7 +73,12 @@ def _parse_args(argv: list[str]) -> tuple[str, str, str]:
         positional.append(a)
         i += 1
 
-    csv_path = positional[0] if len(positional) > 0 else "examples/sample_sales.csv"
+    if not positional:
+        sys.stderr.write(
+            "Usage: python app_cli.py <path/to/data.csv> [\"goal\"] [--lang zh|en]\n"
+        )
+        sys.exit(2)
+    csv_path = positional[0]
     default_goal_zh = "全面分析这份数据,找出关键业务洞察"
     default_goal_en = "Analyze this dataset thoroughly and surface the key business insights."
     if len(positional) > 1:

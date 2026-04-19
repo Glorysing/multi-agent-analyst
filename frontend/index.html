@@ -191,6 +191,18 @@
   .cfg-panel .hint.warn {
     background: rgba(245,158,11,0.08); border-left-color: var(--warn);
   }
+  .cfg-panel details.advanced {
+    margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px;
+  }
+  .cfg-panel details.advanced summary {
+    color: var(--muted); font-size: 12px; cursor: pointer;
+    list-style: none; user-select: none;
+  }
+  .cfg-panel details.advanced summary::before {
+    content: "▸ "; display: inline-block; transition: transform .15s ease;
+  }
+  .cfg-panel details.advanced[open] summary::before { content: "▾ "; }
+  .cfg-panel details.advanced summary:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -220,13 +232,17 @@
       <div class="field-row">
         <label data-i18n="lbl_provider">服务商</label>
         <select id="provider">
-          <option value="ollama"             data-i18n="opt_ollama">Ollama (本地, 免费)</option>
-          <option value="anthropic"          data-i18n="opt_anthropic">Anthropic Claude (API)</option>
-          <option value="openai_compatible"  data-i18n="opt_openai">OpenAI 兼容 (DeepSeek / Groq / Moonshot...)</option>
+          <option value="ollama"    data-i18n="opt_ollama">Ollama (本地, 免费, 推荐)</option>
+          <option value="anthropic" data-i18n="opt_anthropic">Claude (Anthropic)</option>
+          <option value="deepseek"  data-i18n="opt_deepseek">DeepSeek (国内, 便宜)</option>
+          <option value="moonshot"  data-i18n="opt_moonshot">Kimi / Moonshot (国内)</option>
+          <option value="groq"      data-i18n="opt_groq">Groq (免费额度, 快)</option>
+          <option value="openai"    data-i18n="opt_openai">OpenAI</option>
+          <option value="custom"    data-i18n="opt_custom">自定义 (OpenAI 兼容)</option>
         </select>
       </div>
 
-      <!-- Ollama 字段 -->
+      <!-- Ollama: 本地服务, 有 host 可能非默认, 字段保持 -->
       <div id="cfg-ollama" class="cfg-panel">
         <div class="field-row">
           <label data-i18n="lbl_model">通用模型</label>
@@ -243,32 +259,37 @@
         <div class="hint" data-i18n="hint_ollama">模型必须先 ollama pull 过. 本地跑, 数据不出电脑, 0 费用.</div>
       </div>
 
-      <!-- Claude 字段 -->
-      <div id="cfg-anthropic" class="cfg-panel" style="display:none">
+      <!-- 云端预设: Claude / DeepSeek / Moonshot / Groq / OpenAI 共用这一个面板 -->
+      <!-- 只需填 API Key. base_url 与默认 model 根据所选服务商自动注入, 不用填 -->
+      <div id="cfg-cloud" class="cfg-panel" style="display:none">
         <div class="field-row">
           <label>API Key</label>
-          <input type="password" id="anthropic-key" placeholder="sk-ant-...">
-        </div>
-        <div class="field-row">
-          <label data-i18n="lbl_model">模型</label>
-          <input type="text" id="anthropic-model" value="claude-sonnet-4-5" placeholder="claude-sonnet-4-5">
+          <input type="password" id="cloud-key" placeholder="sk-...">
         </div>
         <div class="hint warn" data-i18n="hint_apikey">API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.</div>
+        <details class="advanced">
+          <summary data-i18n="adv_title">高级设置 (可选, 一般不需要)</summary>
+          <div class="field-row" style="margin-top:10px">
+            <label data-i18n="lbl_model">模型覆盖</label>
+            <input type="text" id="cloud-model" placeholder="">
+          </div>
+          <div class="hint" data-i18n="hint_model_override">留空使用推荐默认值. 填了会覆盖本次分析用的 model id.</div>
+        </details>
       </div>
 
-      <!-- OpenAI 兼容字段 -->
-      <div id="cfg-openai" class="cfg-panel" style="display:none">
+      <!-- 自定义 OpenAI 兼容: 用户手动填三项 -->
+      <div id="cfg-custom" class="cfg-panel" style="display:none">
         <div class="field-row">
           <label>API Key</label>
-          <input type="password" id="openai-key" placeholder="sk-...">
+          <input type="password" id="custom-key" placeholder="sk-...">
         </div>
         <div class="field-row">
           <label data-i18n="lbl_baseurl">Base URL</label>
-          <input type="text" id="openai-baseurl" value="https://api.deepseek.com/v1" placeholder="https://api.deepseek.com/v1">
+          <input type="text" id="custom-baseurl" placeholder="https://api.example.com/v1">
         </div>
         <div class="field-row">
           <label data-i18n="lbl_model">模型</label>
-          <input type="text" id="openai-model" value="deepseek-chat" placeholder="deepseek-chat">
+          <input type="text" id="custom-model" placeholder="model-name">
         </div>
         <div class="hint warn" data-i18n="hint_apikey">API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.</div>
       </div>
@@ -345,11 +366,17 @@ const I18N = {
     lbl_coder_model:  "代码模型",
     lbl_host:         "Ollama 地址",
     lbl_baseurl:      "Base URL",
-    opt_ollama:       "Ollama (本地, 免费)",
-    opt_anthropic:    "Anthropic Claude (API)",
-    opt_openai:       "OpenAI 兼容 (DeepSeek / Groq / Moonshot...)",
+    opt_ollama:       "Ollama (本地, 免费, 推荐)",
+    opt_anthropic:    "Claude (Anthropic)",
+    opt_deepseek:     "DeepSeek (国内, 便宜)",
+    opt_moonshot:     "Kimi / Moonshot (国内)",
+    opt_groq:         "Groq (免费额度, 快)",
+    opt_openai:       "OpenAI",
+    opt_custom:       "自定义 (OpenAI 兼容)",
+    adv_title:        "高级设置 (可选, 一般不需要)",
     hint_ollama:      "模型必须先 ollama pull 过. 本地跑, 数据不出电脑, 0 费用.",
     hint_apikey:      "API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.",
+    hint_model_override: "留空使用推荐默认值. 填了会覆盖本次分析用的 model id.",
     dz_idle:          "拖拽 CSV 到这里,或点击选择文件",
     dz_hint:          "仅支持 .csv / .tsv / .txt,最大 50MB",
     dz_uploading:     "上传中:{name}...",
@@ -391,11 +418,17 @@ const I18N = {
     lbl_coder_model:  "Coder Model",
     lbl_host:         "Ollama Host",
     lbl_baseurl:      "Base URL",
-    opt_ollama:       "Ollama (local, free)",
-    opt_anthropic:    "Anthropic Claude (API)",
-    opt_openai:       "OpenAI-compatible (DeepSeek / Groq / Moonshot...)",
-    hint_ollama:      "You must `ollama pull` the model first. Runs locally, data stays on-device, zero cost.",
+    opt_ollama:       "Ollama (local, free, recommended)",
+    opt_anthropic:    "Claude (Anthropic)",
+    opt_deepseek:     "DeepSeek (cheap)",
+    opt_moonshot:     "Kimi / Moonshot",
+    opt_groq:         "Groq (free tier, fast)",
+    opt_openai:       "OpenAI",
+    opt_custom:       "Custom (OpenAI-compatible)",
+    adv_title:        "Advanced (optional, rarely needed)",
+    hint_ollama:      "The model must be `ollama pull`-ed first. Runs locally, data stays on-device, zero cost.",
     hint_apikey:      "API key is used only for this run. Never written to disk / logs. Cleared on page close.",
+    hint_model_override: "Leave blank to use the recommended default. Filling it overrides the model id for this run.",
     dz_idle:          "Drag a CSV here, or click to choose a file",
     dz_hint:          ".csv / .tsv / .txt only, up to 50MB",
     dz_uploading:     "Uploading: {name}...",
@@ -495,43 +528,80 @@ const runBtn = $("#runBtn"), log = $("#log");
 let fileId = null, fileName = null;
 
 // ---- Provider switcher ----
-// 非敏感字段 (model / host / base_url) 存 localStorage, 下次打开自动回填。
-// API Key 故意不存, 关页面就消失。
-const PROVIDER_FIELDS = {
-  ollama:    ["ollama-model", "ollama-coder-model", "ollama-host"],
-  anthropic: ["anthropic-model"],                   // 不存 anthropic-key
-  openai_compatible: ["openai-baseurl", "openai-model"],  // 不存 openai-key
+// 前端"服务商"下拉的每个值映射到后端 provider + 预设的 base_url + 默认 model。
+// 用户只需要选一个服务商 + 填 API Key, URL 和 model id 全部由预设自动注入, 不用懂。
+// "custom" 是逃生舱, 让用户手填三项 (未列出的 OpenAI 兼容服务)。
+const PROVIDER_PRESETS = {
+  anthropic: {
+    backend: "anthropic",
+    model:   "claude-sonnet-4-5",
+  },
+  deepseek: {
+    backend:  "openai_compatible",
+    base_url: "https://api.deepseek.com/v1",
+    model:    "deepseek-chat",
+  },
+  moonshot: {
+    backend:  "openai_compatible",
+    base_url: "https://api.moonshot.cn/v1",
+    model:    "moonshot-v1-32k",
+  },
+  groq: {
+    backend:  "openai_compatible",
+    base_url: "https://api.groq.com/openai/v1",
+    model:    "llama-3.3-70b-versatile",
+  },
+  openai: {
+    backend:  "openai_compatible",
+    base_url: "https://api.openai.com/v1",
+    model:    "gpt-4o",
+  },
 };
+
+// localStorage 只存非敏感字段: 服务商选择 + Ollama 的 model/host + 自定义的 url/model 等。
+// API Key 系列 (cloud-key / custom-key) 故意不存, 关页面即销毁。
+const LS_NON_SECRET_FIELDS = [
+  "ollama-model", "ollama-coder-model", "ollama-host",
+  "cloud-model",
+  "custom-baseurl", "custom-model",
+];
 const PROVIDER_LS_KEY = "mad.providerCfg";
 
 function loadProviderCfg() {
   try {
     const saved = JSON.parse(localStorage.getItem(PROVIDER_LS_KEY) || "{}");
     if (saved.provider) $("#provider").value = saved.provider;
-    Object.keys(PROVIDER_FIELDS).forEach(prov => {
-      (PROVIDER_FIELDS[prov] || []).forEach(id => {
-        if (saved[id] !== undefined && $("#" + id)) $("#" + id).value = saved[id];
-      });
+    LS_NON_SECRET_FIELDS.forEach(id => {
+      if (saved[id] !== undefined && $("#" + id)) $("#" + id).value = saved[id];
     });
   } catch (_) { /* ignore */ }
 }
 
 function saveProviderCfg() {
   const out = { provider: $("#provider").value };
-  Object.keys(PROVIDER_FIELDS).forEach(prov => {
-    (PROVIDER_FIELDS[prov] || []).forEach(id => {
-      const el = $("#" + id);
-      if (el) out[id] = el.value;
-    });
+  LS_NON_SECRET_FIELDS.forEach(id => {
+    const el = $("#" + id);
+    if (el) out[id] = el.value;
   });
   try { localStorage.setItem(PROVIDER_LS_KEY, JSON.stringify(out)); } catch (_) {}
 }
 
 function switchProviderPanel() {
   const v = $("#provider").value;
-  $("#cfg-ollama").style.display    = v === "ollama"            ? "" : "none";
-  $("#cfg-anthropic").style.display = v === "anthropic"         ? "" : "none";
-  $("#cfg-openai").style.display    = v === "openai_compatible" ? "" : "none";
+  const isOllama = v === "ollama";
+  const isCustom = v === "custom";
+  const isPreset = !!PROVIDER_PRESETS[v];
+
+  $("#cfg-ollama").style.display = isOllama ? "" : "none";
+  $("#cfg-cloud").style.display  = isPreset ? "" : "none";
+  $("#cfg-custom").style.display = isCustom ? "" : "none";
+
+  // 云端预设面板的"模型覆盖"placeholder 跟随所选服务商, 让用户一眼看到默认值是什么
+  if (isPreset) {
+    const p = PROVIDER_PRESETS[v];
+    const modelInput = $("#cloud-model");
+    if (modelInput) modelInput.placeholder = p.model;
+  }
 }
 
 $("#provider").addEventListener("change", () => {
@@ -539,25 +609,41 @@ $("#provider").addEventListener("change", () => {
   saveProviderCfg();
 });
 
-// 任意字段改动 -> 保存 (API key 因为不在 PROVIDER_FIELDS 里, 不会被存)
-document.querySelectorAll("#cfg-ollama input, #cfg-anthropic input, #cfg-openai input")
-  .forEach(el => el.addEventListener("change", saveProviderCfg));
+// 非密字段改动 -> 保存 (API Key 输入框不在列表里, 不会被持久化)
+document.querySelectorAll("#cfg-ollama input, #cfg-cloud input, #cfg-custom input")
+  .forEach(el => {
+    if (el.type !== "password") el.addEventListener("change", saveProviderCfg);
+  });
 
 function buildProviderConfig() {
-  const prov = $("#provider").value;
-  const cfg = { provider: prov };
-  if (prov === "ollama") {
-    cfg.model       = $("#ollama-model").value.trim() || "qwen2.5:14b";
-    cfg.coder_model = $("#ollama-coder-model").value.trim() || "qwen2.5-coder:7b";
-    cfg.host        = $("#ollama-host").value.trim() || "http://localhost:11434";
-  } else if (prov === "anthropic") {
-    cfg.api_key = $("#anthropic-key").value.trim();
-    cfg.model   = $("#anthropic-model").value.trim() || "claude-sonnet-4-5";
-  } else if (prov === "openai_compatible") {
-    cfg.api_key  = $("#openai-key").value.trim();
-    cfg.base_url = $("#openai-baseurl").value.trim();
-    cfg.model    = $("#openai-model").value.trim() || "deepseek-chat";
+  const v = $("#provider").value;
+
+  if (v === "ollama") {
+    return {
+      provider:    "ollama",
+      model:       $("#ollama-model").value.trim()       || "qwen2.5:14b",
+      coder_model: $("#ollama-coder-model").value.trim() || "qwen2.5-coder:7b",
+      host:        $("#ollama-host").value.trim()        || "http://localhost:11434",
+    };
   }
+
+  if (v === "custom") {
+    return {
+      provider: "openai_compatible",
+      api_key:  $("#custom-key").value.trim(),
+      base_url: $("#custom-baseurl").value.trim(),
+      model:    $("#custom-model").value.trim(),
+    };
+  }
+
+  const p = PROVIDER_PRESETS[v];
+  if (!p) return { provider: "ollama" };
+  const cfg = {
+    provider: p.backend,
+    api_key:  $("#cloud-key").value.trim(),
+    model:    $("#cloud-model").value.trim() || p.model,  // 覆盖为空就用预设
+  };
+  if (p.base_url) cfg.base_url = p.base_url;
   return cfg;
 }
 
@@ -632,12 +718,19 @@ runBtn.addEventListener("click", async () => {
   if (!fileId) return;
 
   const providerCfg = buildProviderConfig();
-  // 如果选了 API 类服务商但没填 key, 本地就拦截, 别浪费 task_id
-  if ((providerCfg.provider === "anthropic" || providerCfg.provider === "openai_compatible")
-      && !providerCfg.api_key) {
+  // 本地预检: 选了云端但没填 key / 选了自定义但没填 URL 或 model, 直接拦下, 别浪费一个 task_id
+  const needsKey = providerCfg.provider === "anthropic" || providerCfg.provider === "openai_compatible";
+  if (needsKey && !providerCfg.api_key) {
     alert(currentLang === "en"
       ? "Please enter your API key before starting."
       : "请先填入 API Key 再开始分析。");
+    return;
+  }
+  // "custom" 档必须同时填 base_url 和 model, 不然底层 OpenAI client 会抛含糊的错
+  if ($("#provider").value === "custom" && (!providerCfg.base_url || !providerCfg.model)) {
+    alert(currentLang === "en"
+      ? "Custom provider needs both Base URL and Model id."
+      : "自定义服务商需要同时填写 Base URL 和模型 id。");
     return;
   }
 
