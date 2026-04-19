@@ -1,218 +1,273 @@
-# Multi-Agent 企业数据分析系统
+<div align="center">
 
-**简体中文** | [English](README_EN.md)
+# 业务数据分析系统
 
-上传一份 CSV,四个 LLM Agent 自动规划 → 写代码 → 跑数 → 审查 → 出报告。全程本地、零 API 费用、数据不出电脑。前端支持中英文一键切换,所有 agent prompt / 图表标题 / 报告都会跟随语言输出。
+**一个可以在家跑、也能一键上线的多 Agent 业务分析工作流**
+
+**简体中文** · [English](README_EN.md)
+
+![python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-FF6B6B)
+![LLM](https://img.shields.io/badge/LLM-Ollama%20%7C%20Claude%20%7C%20Groq%20%7C%20DeepSeek-8B5CF6)
+![License](https://img.shields.io/badge/License-MIT-22C55E)
+
+上传 CSV → Planner 规划 → Coder 生成代码 → Executor 跑数 → Reviewer 审查 → Reporter 输出报告
+<br/>自带**分析追问**、**一键导 PPT**、**透明度面板**,本地部署零 API 费用,也可 Railway 一键上线。
+
+</div>
+
+---
+
+## 亮点
+
+| 能力 | 说明 |
+|---|---|
+| **本地优先** | 默认跑 Ollama (qwen2.5:14b + qwen2.5-coder:7b), 数据不出本机, 零 API 费用 |
+| **一键切云端** | Ollama / Claude / Groq / DeepSeek / Kimi / 硅基流动 / OpenAI 全部即选即用, API Key 只在当次请求生命周期里存在, 不写磁盘不落日志 |
+| **中英双语全链路** | Agent prompt / 状态推送 / 图表标题轴标签 / Markdown 报告 / 前端 UI 全部跟随所选语言, 右上角一键切换 |
+| **分析追问 (Follow-up Chat)** | 分析完成后可以继续问 "为什么华南低" "这个结论对 Q4 靠谱吗", 基于冻结的报告/代码/stdout 直接回答, 不重跑代码 |
+| **一键导出 PPT** | 报告 + 图表自动拼成 16:9 商务风 .pptx, 封面 / 按章节拆分 / 每图一页 / 致谢页 |
+| **透明度面板** | 一个 `<details>` 折叠区就能看到 Planner 的步骤、Coder 生成的完整代码、Executor 的运行输出 |
+| **沙箱执行** | Executor 用子进程 + 60s 超时 + 黑名单关键字 + 静态 lint 拦截已知 bug 模式 (比如 `sns.heatmap(df)` 整表强转) |
+| **智能重试路由** | 执行失败 → 回 Coder 改 bug; 质量不达标 → 回 Planner 换思路; 最多 3 轮 |
+| **Railway 一键部署** | 项目根自带 `Procfile` + `railway.toml`, 推 GitHub 就能出公开 URL, 图表走 base64 内嵌, 不依赖持久卷 |
+
+---
+
+## 三种使用方式
+
+### 1. 本地零成本 (Windows, 真・一键双击)
+
+适合: 数据敏感、想完全离线、长期高频使用。
+
+前置两项, 只装一次:
+- **Python 3.10+** (python.org 下载, 安装时勾选 *Add Python to PATH*)
+- **Ollama** (ollama.com 下载), 装完拉两个模型:
+  ```powershell
+  ollama pull qwen2.5:14b         # 通用推理 (~9 GB)
+  ollama pull qwen2.5-coder:7b    # 代码专用 (~4.7 GB)
+  ```
+
+然后:
+1. 下载仓库 zip 解压, 或 `git clone`
+2. **双击 `start.bat`**
+   - 首次: 自动建 `.venv`, 装依赖, 拷贝 `.env` (2-5 分钟)
+   - 之后: 秒启, 浏览器自动弹出 `http://127.0.0.1:8000`
+3. 页面里拖 CSV → 写目标 → 开始分析
+
+### 2. 本地 + 云端模型 (只想要 Agent 逻辑, 模型走 API)
+
+同上装 Python 和双击 `start.bat`。启动后在浏览器 "2. 模型设置" 面板选 Claude / Groq / DeepSeek / Kimi / 自定义, 填入 API Key 即可。Key 只用于当次请求, 不会落到 `.env` 或磁盘。
+
+Groq 特别推荐: [console.groq.com/keys](https://console.groq.com/keys) 免费注册, llama-3.3-70b-versatile 推理延迟 ~500ms, 几乎能当本地模型用。
+
+### 3. 公开 Demo (Railway + Groq, 0 元上线)
+
+适合: 想给别人 demo 链接、不想让体验者装 Python。
+
+1. Fork 本仓库到你自己的 GitHub
+2. 去 [railway.app](https://railway.app), 点 *New Project → Deploy from GitHub repo*
+3. 选中你 fork 的仓库, 它会自动识别 `Procfile` 和 `railway.toml`
+4. Railway 发给你一个 `xxx.up.railway.app` 地址, 发出去即可
+
+体验者打开那个地址, 在 "模型设置" 选 **Groq**, 填自己的 Groq key, 就能完整跑通。图表用 base64 嵌回 SSE, 不依赖服务器持久文件。
+
+> 也可以直接把 `GROQ_API_KEY` 设在 Railway 的环境变量里让所有访客共用一个 key, 代价是你自己的额度会被消耗。
+
+---
+
+## macOS / Linux 手动启动
+
+项目不再随发 `.sh` 脚本, 一条命令就够:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python launch.py
+```
+
+`launch.py` 会起 uvicorn、轮询 `/healthz` 健康检查就绪后、再自动打开浏览器。
+
+---
 
 ## 系统架构
 
 ```
-      CSV 上传
-         │
-         ▼
- ┌───────────────┐   5-7 步分析计划 (JSON)
- │   Planner     │──────────────────────────┐
- └───────────────┘                          │
-                                            ▼
-                                  ┌───────────────┐
-                                  │    Coder      │   pandas + matplotlib 代码
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                  ┌───────────────┐
-                                  │   Executor    │   子进程 + 60s 超时 + 黑名单
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                  ┌───────────────┐
-                                  │   Reviewer    │   {passed, feedback}
-                                  └───────────────┘
-                                     │         │
-                                  通过       不通过 (≤3 次)
-                                     │         │
-                                     ▼         └────→ 回到 Planner
-                                  ┌───────────────┐
-                                  │   Reporter    │   Markdown 最终报告
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                   前端展示图表 + 报告
+                             ┌─────────────────────┐
+                CSV + 目标 ──▶│     Planner         │  5-7 步分析计划
+                             └──────────┬──────────┘
+                                        ▼
+                             ┌─────────────────────┐
+                             │      Coder          │  pandas + matplotlib
+                             └──────────┬──────────┘
+                                        ▼
+                             ┌─────────────────────┐
+                             │     Executor        │  子进程 + 60s 超时 + 黑名单
+                             └──────────┬──────────┘
+                                        ▼
+                             ┌─────────────────────┐  ┌───── 不通过 (≤3 次)
+                             │     Reviewer        │──┤
+                             └──────────┬──────────┘  └───── 回 Planner / Coder
+                                    通过 │
+                                        ▼
+                             ┌─────────────────────┐
+                             │     Reporter        │  Markdown 业务报告
+                             └──────────┬──────────┘
+                                        ▼
+                    ┌───────────────────┼───────────────────────┐
+                    ▼                   ▼                       ▼
+            前端 SSE 渲染         分析追问 (/chat)         一键导出 PPT
 ```
-
-## 快速开始
-
-### 真・一键双击 (Windows, 推荐)
-
-1. 准备好两个一次性前置:
-   - **Python 3.10+** —— python.org 下载,装的时候**务必勾选** *Add Python to PATH*
-   - **Ollama** —— ollama.com 下载,装完打开 cmd 拉两个模型 (只用本地不付费的话):
-     ```powershell
-     ollama pull qwen2.5:14b         # 通用推理 (~9 GB)
-     ollama pull qwen2.5-coder:7b    # 代码专用 (~4.7 GB)
-     ```
-     如果只想用云端 API (Claude / DeepSeek),这一步可以跳过。
-2. 从 GitHub 下载 zip 解压 (或 `git clone`)
-3. **双击 `start.bat`**
-   - 第一次双击:自动建 `.venv`、装全部依赖、拷贝 `.env` (2-5 分钟, 只发生一次)
-   - 以后双击:秒启动,浏览器自动弹出 `http://127.0.0.1:8000`
-4. 浏览器里:右上角切中英文 → "**模型设置**" 选 Ollama / Claude / DeepSeek (云端的话直接在面板填 API Key,不写磁盘) → 拖 CSV 进去 → 写分析目标 → 点开始。
-
-就这样,没了。`start.bat` 已经把 venv、pip install、.env、uvicorn 全包了,不用再手动执行任何 powershell 命令。
-
-> **macOS / Linux**: 项目不再随发 `.sh` 脚本。手动跑也很简单:
-> ```bash
-> python3 -m venv .venv
-> .venv/bin/pip install -r requirements.txt
-> .venv/bin/python launch.py
-> ```
 
 ---
 
-### 高级 / 排错: 手动执行各步
+## 三个 UX 亮点
 
-正常路径下面这些命令你**都不需要敲** —— `start.bat` 已经替你做了。
-仅在 `start.bat` 没按预期工作、或者你想跑 CLI 烟测时,才会用到。
+### 透明度面板
 
-<details>
-<summary>展开手动步骤</summary>
+报告下面有一个 "查看分析过程" 折叠区, 展开后能看到:
+- **Plan** — Planner 给出的 5-7 步分析计划
+- **Code** — Coder 写出来、真正被执行的 pandas + matplotlib 代码
+- **Stdout** — Executor 跑这段代码时的运行输出 (stdout + stderr)
 
-**重建虚拟环境** (例如依赖装坏了想从头来):
-```powershell
-rmdir /s /q .venv
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+这是让非技术用户"敢相信结论"的关键: 结论怎么来的、算对没算对, 都能自己翻开看一眼。
 
-**手动跑后端** (调试时想看后端 traceback):
-```powershell
-.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
-```
+### 分析追问 (Follow-up Chat)
 
-**CLI 烟测** (不开浏览器,纯命令行验证 Agent 能跑通,用你自己的 CSV):
-```powershell
-.venv\Scripts\python.exe app_cli.py path\to\your.csv                 # 中文输出
-.venv\Scripts\python.exe app_cli.py path\to\your.csv --lang en       # 英文
-.venv\Scripts\python.exe app_cli.py path\to\your.csv "找出销售异常点"
-```
-看到终端依次打印 Planner / Coder / Executor / Reviewer / Reporter 完成,最后出现一份 Markdown 报告即 OK。
+报告出来之后, 右上角 "展开追问" 按钮打开对话框, 可以继续问:
+- "华南地区为什么这么低?"
+- "这个结论在 Q4 还成立吗?"
+- "你可以帮我看看我应该重点做哪个产品线吗?"
 
-**改默认 LLM 配置** (前端选择器是请求级覆盖,只对当次分析生效;想改默认值就编辑 `.env`):
-```powershell
-copy .env.example .env
-# 编辑 LLM_PROVIDER / OLLAMA_MODEL / ANTHROPIC_API_KEY 等
-```
+模型拿到的是**冻结的**数据摘要 + Coder 代码 + Executor stdout + 最终报告, 基于这些直接回答, 不会再跑一次代码。想换角度分析请回到 "3. 分析目标" 重新运行。
 
-</details>
+### 一键导出 PPT
 
-## 功能特性
+报告卡片右上角 "导出 PPT" 按钮: 后端用 python-pptx 现生成一份 16:9 深蓝商务风 `.pptx`:
+- 封面页 (大标题 + 分析目标 + 日期)
+- 每个 Markdown `##` 章节自动拆成一页, 带左侧强调色条
+- 每张图表单独一页, 图文居中不拉伸
+- 致谢页
 
-- **本地优先**:默认跑 Ollama,数据不出电脑,零 API 费用
-- **前端即时切模型**:右侧"模型设置"面板三选一 (Ollama / Claude / OpenAI 兼容),API Key 当次请求用完即销毁,不写磁盘不打日志
-- **一键切换云端**:改 `.env` 的 `LLM_PROVIDER` 或直接在前端选,Agent 代码不动
-- **中英双语全链路**:agent prompt / 状态推送 / 图表标题轴标签 / 报告 / 前端 UI 全部跟随选择的语言;前端右上角一键切换并记忆到 localStorage
-- **Coder 用代码专用模型**:`qwen2.5-coder:7b` 生成 pandas 代码比通用模型更稳
-- **SSE 流式进度推送**:前端能实时看到每个 Agent 的状态和消息
-- **沙箱执行**:Executor 用子进程 + 60 秒超时 + 黑名单关键字拦截,强制 PYTHONUTF8=1 防 Windows 中文乱码
-- **智能重试路由**:执行失败 → Coder 直接改 bug;质量不达标 → Planner 换思路;最多 3 轮后强制收口
-- **数据类型守护**:Coder prompt 显式禁掉 `df.to_numpy() / df.corr() / sns.heatmap(df) / df.astype(float)` 等会把字符串列硬转 float 的整表 dtype 操作
-- **图表中文友好**:自动配置 Microsoft YaHei / SimHei 字体
-- **异常容错**:Planner JSON 解析失败走兜底计划;Reviewer 模型挂了宽松放行;Reporter 挂了仍给最小可读报告
+下载直接推到浏览器, 服务器不留本地文件(导出完会缓存一份在 `outputs/` 便于复制)。
+
+---
 
 ## 技术栈
 
 | 模块 | 技术 |
 |---|---|
 | Agent 编排 | LangGraph |
-| 本地模型 | Ollama (qwen2.5:14b / qwen2.5-coder:7b) |
-| 云端备选 | Anthropic Claude / OpenAI 兼容 (DeepSeek / Groq / 千问 / Kimi / 硅基流动) |
+| 本地模型 | Ollama (qwen2.5:14b + qwen2.5-coder:7b) |
+| 云端 Provider | Anthropic Claude / Groq / DeepSeek / Moonshot / OpenAI / 自定义 |
 | 数据处理 | pandas, numpy, matplotlib, seaborn |
-| 后端 | FastAPI + sse-starlette |
-| 前端 | 原生 HTML + JavaScript + marked.js |
+| 后端 | FastAPI + sse-starlette + python-pptx |
+| 前端 | 原生 HTML + JavaScript + marked.js (无 build 步骤) |
+| 部署 | Railway (Procfile + railway.toml), 或任意支持 uvicorn 的平台 |
 | Python | 3.10+ |
+
+---
 
 ## 目录结构
 
+<details>
+<summary>展开查看</summary>
+
 ```
 multi-agent-analyst/
-├── agents/                      # 4 个 Agent
-│   ├── planner.py              # 规划 5-7 步分析计划
-│   ├── coder.py                # 生成 pandas + matplotlib 代码
-│   ├── executor.py             # 子进程执行 + 安全检查
-│   └── reviewer.py             # 判定是否需要重试
+├── agents/
+│   ├── planner.py          # 5-7 步分析计划
+│   ├── coder.py            # pandas + matplotlib 代码生成
+│   ├── executor.py         # 子进程执行 + 静态 lint + 黑名单
+│   └── reviewer.py         # 判定是否重试
 ├── workflow/
-│   ├── state.py                # 共享状态 AnalysisState
-│   ├── graph.py                # LangGraph 编排 + reporter 节点
-│   └── i18n.py                 # 中英文 prompt / 状态文案 / UI 字典
-├── providers/                  # LLM 抽象层
-│   ├── base.py                 # BaseLLMProvider / Message
+│   ├── state.py            # AnalysisState 共享状态
+│   ├── graph.py            # LangGraph 编排 + reporter 节点
+│   └── i18n.py             # 中英文 prompt / 状态文案 / UI 字典 / 追问 prompt
+├── providers/
+│   ├── base.py             # BaseLLMProvider / Message
+│   ├── factory.py          # get_provider / get_coder_provider 分发
 │   ├── ollama_provider.py
 │   ├── anthropic_provider.py
-│   ├── openai_provider.py      # 兼容 DeepSeek / Groq / OpenAI 等
-│   └── factory.py              # get_provider() / get_coder_provider()
+│   ├── openai_provider.py  # 兼容 DeepSeek / Kimi / 千问 / 硅基流动 / OpenAI
+│   └── groq_provider.py    # Groq 薄封装 (在线 Demo 首选)
 ├── backend/
-│   └── main.py                 # FastAPI + SSE
+│   ├── main.py             # FastAPI + SSE + /chat + /export_pptx + /upload
+│   └── pptx_export.py      # python-pptx 报告 -> 商务风 .pptx
 ├── frontend/
-│   └── index.html              # 单文件前端
-├── outputs/                    # 图表 + 临时脚本 + 上传文件 (运行时自动生成)
-├── app_cli.py                  # CLI 调试入口 (支持 --lang)
-├── launch.py                   # 跨平台启动器: 起 uvicorn + 轮询 /healthz + 开浏览器
-├── start.bat                   # Windows 一键: 首次双击自动建 venv + pip install, 之后直启
+│   └── index.html          # 单文件 (HTML + CSS + JS + i18n)
+├── outputs/                # 运行时自动生成: 图表 / 临时脚本 / CSV 上传
+├── app_cli.py              # CLI 烟测入口 (--lang zh/en)
+├── launch.py               # 跨平台启动器: uvicorn + 健康检查 + 开浏览器
+├── start.bat               # Windows 一键: 首次自动建 venv + 装依赖
+├── Procfile                # Railway / Heroku 启动命令
+├── railway.toml            # Railway builder / healthcheck 配置
 ├── requirements.txt
 ├── .env.example
-├── .gitignore
-├── LICENSE                     # MIT
-├── README.md                   # 本文件
-└── README_EN.md                # English version
+├── LICENSE                 # MIT
+├── README.md
+└── README_EN.md
 ```
 
-## .env 字段说明
+</details>
 
-> 这些只是**默认值**。前端"模型设置"面板每次请求都可以覆盖 (provider / model / host / API Key 等),覆盖只影响当次分析,不会写回 `.env`。
+---
+
+## 配置说明
+
+所有 `.env` 字段都只是**默认值**。前端 "模型设置" 面板的每次覆盖都只影响当次请求, 不会写回 `.env`。
 
 | 字段 | 说明 | 默认 |
 |---|---|---|
-| `LLM_PROVIDER` | `ollama` / `anthropic` / `openai_compatible` | `ollama` |
+| `LLM_PROVIDER` | `ollama` / `anthropic` / `openai_compatible` / `groq` | `ollama` |
 | `OLLAMA_HOST` | Ollama 服务地址 | `http://localhost:11434` |
-| `OLLAMA_MODEL` | 通用模型 (Planner / Reviewer / Reporter) | `qwen2.5:14b` |
-| `OLLAMA_CODER_MODEL` | 代码模型 (Coder 专用) | `qwen2.5-coder:7b` |
-| `ANTHROPIC_API_KEY` | Claude API Key | 空 |
-| `ANTHROPIC_MODEL` | Claude 模型名 | `claude-sonnet-4-5` |
-| `OPENAI_API_KEY` | OpenAI 兼容 API Key | 空 |
-| `OPENAI_BASE_URL` | OpenAI 兼容服务地址 | `https://api.deepseek.com/v1` |
-| `OPENAI_MODEL` | 模型名 | `deepseek-chat` |
+| `OLLAMA_MODEL` | 通用模型 | `qwen2.5:14b` |
+| `OLLAMA_CODER_MODEL` | 代码模型 | `qwen2.5-coder:7b` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Claude 配置 | 空 / `claude-sonnet-4-5` |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` | OpenAI 兼容 (DeepSeek 默认) | 空 / DeepSeek / `deepseek-chat` |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Groq (免费额度) | 空 / `llama-3.3-70b-versatile` |
 | `MAX_ITERATIONS` | Reviewer 最大重试轮次 | `3` |
-| `OUTPUT_LANGUAGE` | 默认输出语言: `zh` (中文) / `en` (英文) | `zh` |
+| `OUTPUT_LANGUAGE` | 默认输出语言 `zh` / `en` | `zh` |
+
+---
 
 ## 常见问题
 
-**Q: 第一次启动很慢?**
-第一次加载 qwen2.5:14b 需要把模型读到显存,约 10-20 秒。后续就快了。保持 Ollama 常驻即可。
+**第一次启动很慢?**
+第一次加载 qwen2.5:14b 需要把模型读到显存, 10-20 秒。之后就快了, 保持 Ollama 常驻即可。
 
-**Q: 能不能用更小的模型?**
-能。把 `.env` 里的 `OLLAMA_MODEL` 改成 `qwen2.5:7b` 或 `llama3.1:8b` 就行。7b 质量略降但速度快 1 倍。
+**显存只有 8G 跑不动 14b 怎么办?**
+换 `OLLAMA_MODEL=qwen2.5:7b` 或 `llama3.1:8b`, 质量会略降但速度快一倍。或者直接切 Groq (免费) / DeepSeek (便宜)。
 
-**Q: 能用云端模型吗?**
-能。编辑 `.env`:`LLM_PROVIDER=anthropic` 并填 `ANTHROPIC_API_KEY`;或者 `LLM_PROVIDER=openai_compatible` 并填 `OPENAI_*` (DeepSeek / Groq 等都走这个)。
+**能用云端模型吗?**
+能。不想改 `.env` 就在前端 "模型设置" 面板选。Groq 有免费额度, DeepSeek 非常便宜, Claude 质量最稳。
 
-**Q: 报"ANTHROPIC_API_KEY 未设置"?**
-你选了 anthropic 但没填 key。要么填上,要么改回 `LLM_PROVIDER=ollama`。
+**部署到 Railway 后图表显示不出来?**
+确认前端拿到的 `charts_b64` 不是空对象。本项目默认每张图都会同时以 base64 推到 SSE, 不依赖持久文件。如果还是空, 看 Railway 日志里 Executor 是不是没跑成功。
 
-**Q: 前端一直显示"分析中..."?**
-八成是后端报错了。切到启动 `uvicorn` 的终端看 traceback,或者打开浏览器 DevTools → Network → `stream/<task_id>` 看 SSE 里推了什么。
+**前端一直显示 "分析中..."**
+八成后端报错了。本地切到 uvicorn 终端看 traceback, 或浏览器 DevTools → Network → `stream/<task_id>` 看 SSE 最后推了什么事件。
 
-**Q: 图表中文是方框?**
-只在非 Windows 机器上才会出现。在 `agents/executor.py` 的 `_RUNNER_TEMPLATE` 里把 `Microsoft YaHei` 改成你系统实际存在的中文字体即可。
+**图表中文显示方框?**
+只在非 Windows 环境出现。在 `agents/executor.py` 的 `_RUNNER_TEMPLATE` 里把 `Microsoft YaHei` 改成你系统实际存在的中文字体 (Linux 上常用 `Noto Sans CJK SC`)。
 
-## 验收清单
+**追问为什么有时候答 "请重新跑分析"?**
+正常追问会基于已有数据直接答。只有当问题必须算一个**新数字**或画一张**新图**才会建议重跑 —— 因为追问模式故意不再执行代码, 保证回答速度和数据一致性。
 
-- [x] `start.bat` 首次双击自动建 venv + 装依赖, 之后直启, 浏览器自动打开
-- [x] 前端右上角 **中文 / EN** 可一键切换,UI / 图表 / 报告语言跟随
-- [x] 前端"模型设置"面板可以切 Ollama / Claude / DeepSeek,API Key 不落盘
-- [x] 上传 CSV,点分析,能看到 SSE 进度推送
-- [x] 分析完成后能看到图表和 Markdown 报告
-- [x] `.env` 在 `.gitignore` 中,可以安全 `git init` 推送
+---
+
+## Roadmap
+
+- [ ] 支持 Excel / Parquet 输入
+- [ ] 多文件 join 分析 (比如订单表 + 用户表)
+- [ ] 对话式持续分析模式 (每次发问都追加新代码块)
+- [ ] Playwright 自动化验收
+
+欢迎提 issue / PR。
+
+---
 
 ## License
 
-MIT — 见 [LICENSE](LICENSE)。
+MIT — 见 [LICENSE](LICENSE).

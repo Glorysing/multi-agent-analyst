@@ -1,0 +1,21 @@
+# Railway 部署配置
+# 详细文档: https://docs.railway.app/reference/config-as-code
+#
+# 部署步骤:
+#   1. 把本仓库推到 GitHub
+#   2. 在 Railway 点 "New Project -> Deploy from GitHub repo"
+#   3. 选中本仓库, Railway 会自动读取 Procfile / railway.toml
+#   4. 启动后的网址就是公开 Demo 地址
+#
+# 注: 本项目使用 base64 内嵌图表, 所以不需要持久卷 (volume)。
+# 用户的 Groq API Key 随请求传入, 不在服务器端存储。
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title data-i18n="page_title">Multi-Agent 数据分析系统</title>
+<title data-i18n="page_title">业务数据分析系统</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
@@ -203,13 +203,97 @@
   }
   .cfg-panel details.advanced[open] summary::before { content: "▾ "; }
   .cfg-panel details.advanced summary:hover { color: var(--accent); }
+
+  /* ---- 卡片头部 (标题 + 右侧按钮) ---- */
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .card-head .section-title { margin-bottom: 0; }
+  .card-head button.ghost { margin-left: auto; }
+
+  /* ---- Chat 追问面板 (默认显示卡头, 正文折叠) ---- */
+  #chatBody { display: none; }
+  #chatBody:not(.collapsed) { display: block; }
+  .chat-locked {
+    color: var(--muted); font-size: 13px; padding: 14px 16px;
+    background: rgba(148, 163, 184, 0.06); border-radius: 6px;
+    border: 1px dashed var(--border);
+  }
+  .chat-log {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; min-height: 60px; max-height: 420px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;
+  }
+  .chat-bubble {
+    max-width: 82%; padding: 10px 14px; border-radius: 10px;
+    font-size: 14px; line-height: 1.5; word-wrap: break-word;
+  }
+  .chat-bubble.user {
+    align-self: flex-end; background: var(--accent); color: #0f172a;
+    border-bottom-right-radius: 3px;
+  }
+  .chat-bubble.assistant {
+    align-self: flex-start; background: var(--panel-hi); color: var(--text);
+    border-bottom-left-radius: 3px;
+  }
+  .chat-bubble.assistant p:first-child { margin-top: 0; }
+  .chat-bubble.assistant p:last-child { margin-bottom: 0; }
+  .chat-bubble.assistant code {
+    background: rgba(56, 189, 248, 0.12); padding: 1px 6px; border-radius: 3px;
+    font-size: 12.5px;
+  }
+  .chat-bubble.assistant pre {
+    background: #0f172a; padding: 8px 10px; border-radius: 4px; overflow-x: auto;
+    font-size: 12.5px;
+  }
+  .chat-bubble.thinking { opacity: 0.65; font-style: italic; }
+  .chat-bubble.err {
+    align-self: flex-start; background: rgba(239, 68, 68, 0.15);
+    border: 1px solid var(--err); color: #fecaca;
+  }
+  .chat-input-row { display: flex; gap: 8px; }
+  .chat-input-row input[type=text] { flex: 1; }
+  .chat-hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* ---- 透明度面板 (Plan / Code / Stdout) ---- */
+  .transparency {
+    margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px;
+  }
+  .transparency > summary {
+    cursor: pointer; color: var(--muted); font-size: 13px; user-select: none;
+    list-style: none; padding: 4px 0;
+  }
+  .transparency > summary::before {
+    content: "▸ "; display: inline-block; transition: transform .15s ease;
+  }
+  .transparency[open] > summary::before { content: "▾ "; }
+  .transparency > summary:hover { color: var(--accent); }
+  .transparency-body { margin-top: 10px; display: flex; flex-direction: column; gap: 12px; }
+  .trans-block { background: #0b1220; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+  .trans-title {
+    font-size: 12px; color: var(--accent); margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .trans-content { color: var(--text); font-size: 13.5px; line-height: 1.6; }
+  .trans-content p:first-child { margin-top: 0; }
+  .trans-content p:last-child { margin-bottom: 0; }
+  .trans-content strong { color: var(--accent-2); }
+  pre.trans-code, pre.trans-stdout {
+    margin: 0; padding: 10px 12px; background: #020617; border-radius: 4px;
+    overflow-x: auto; font-family: ui-monospace, Consolas, Menlo, monospace;
+    font-size: 12.5px; color: #cbd5e1; max-height: 380px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  pre.trans-stdout { color: #94a3b8; }
+  .trans-empty { color: var(--muted); font-style: italic; font-size: 12.5px; }
 </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <div class="titlebox">
-        <h1 data-i18n="title">Multi-Agent 数据分析系统</h1>
+        <h1 data-i18n="title">业务数据分析系统</h1>
         <div class="sub" data-i18n="subtitle">上传 CSV → Planner / Coder / Executor / Reviewer 四个 Agent 协作 → 输出图表和业务报告</div>
       </div>
       <div class="lang-switch" role="tablist" aria-label="Language">
@@ -336,8 +420,51 @@
     </div>
 
     <div class="card">
-      <div class="section-title" data-i18n="section_report">6. 分析报告</div>
+      <div class="card-head">
+        <div class="section-title" data-i18n="section_report">6. 分析报告</div>
+        <button class="ghost" id="exportPptxBtn" type="button" disabled
+                data-i18n="btn_export_pptx">导出 PPT</button>
+      </div>
       <div id="report" class="report"><div style="color:var(--muted);" data-i18n="report_empty">分析完成后这里会显示 Markdown 报告</div></div>
+
+      <!-- 透明度面板: 让用户能看到 Plan / Code / Stdout, 信任感 +1 -->
+      <details id="transparencyPanel" class="transparency" hidden>
+        <summary data-i18n="transparency_summary">查看分析过程 (Plan / Code / 输出)</summary>
+        <div class="transparency-body">
+          <div class="trans-block">
+            <div class="trans-title" data-i18n="trans_plan">Planner: 分析计划</div>
+            <div id="transPlan" class="trans-content"></div>
+          </div>
+          <div class="trans-block">
+            <div class="trans-title" data-i18n="trans_code">Coder: 生成的代码</div>
+            <pre id="transCode" class="trans-code"></pre>
+          </div>
+          <div class="trans-block">
+            <div class="trans-title" data-i18n="trans_stdout">Executor: 运行输出</div>
+            <pre id="transStdout" class="trans-stdout"></pre>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card" id="chatCard">
+      <div class="card-head">
+        <div class="section-title" data-i18n="section_chat">7. 追问 / 对话</div>
+        <button class="ghost" id="chatToggleBtn" type="button" disabled
+                data-i18n="chat_expand">展开追问</button>
+      </div>
+      <div id="chatBody" class="collapsed">
+        <div id="chatLog" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput"
+                 data-i18n-attr="placeholder:chat_placeholder"
+                 placeholder="就上面的报告追问一下, 回车发送">
+          <button class="primary" id="chatSendBtn" type="button" data-i18n="chat_send">发送</button>
+        </div>
+        <div class="chat-hint" data-i18n="chat_hint">追问基于上面刚跑出来的结果, 不会再跑一次代码. 想换角度请回到上方目标框重新分析.</div>
+      </div>
+      <div id="chatLocked" class="chat-locked"
+           data-i18n="chat_locked">分析完成后可在这里追问. 点击右上角"展开追问"即可开始对话.</div>
     </div>
   </div>
 
@@ -352,8 +479,8 @@
 // ====================== i18n ======================
 const I18N = {
   zh: {
-    page_title:       "Multi-Agent 数据分析系统",
-    title:            "Multi-Agent 数据分析系统",
+    page_title:       "业务数据分析系统",
+    title:            "业务数据分析系统",
     subtitle:         "上传 CSV → Planner / Coder / Executor / Reviewer 四个 Agent 协作 → 输出图表和业务报告",
     section_upload:   "1. 上传数据",
     section_llm:      "2. 模型设置",
@@ -402,10 +529,28 @@ const I18N = {
     report_none:      "未生成报告",
     alert_start_fail: "启动分析失败:{err}",
     err_sse:          "SSE 连接错误",
+    section_chat:     "7. 追问 / 对话",
+    chat_placeholder: "就上面的报告追问一下, 回车发送",
+    chat_send:        "发送",
+    chat_hint:        "追问基于上面刚跑出来的结果, 不会再跑一次代码. 想换角度请回到上方目标框重新分析.",
+    chat_thinking:    "思考中...",
+    chat_err:         "调用失败: {err}",
+    chat_empty_input: "请输入追问内容",
+    chat_expand:      "展开追问",
+    chat_collapse:    "收起",
+    chat_locked:      "分析完成后可在这里追问. 点击右上角\"展开追问\"即可开始对话.",
+    btn_export_pptx:  "导出 PPT",
+    btn_exporting:    "生成中...",
+    export_pptx_fail: "导出失败: {err}",
+    transparency_summary: "查看分析过程 (Plan / Code / 输出)",
+    trans_plan:       "Planner: 分析计划",
+    trans_code:       "Coder: 生成的代码",
+    trans_stdout:     "Executor: 运行输出",
+    trans_empty:      "(本次未生成此部分)",
   },
   en: {
-    page_title:       "Multi-Agent Data Analyst",
-    title:            "Multi-Agent Data Analyst",
+    page_title:       "Business Data Analyst",
+    title:            "Business Data Analyst",
     subtitle:         "Upload a CSV → Planner / Coder / Executor / Reviewer collaborate → get charts and a business report",
     section_upload:   "1. Upload Data",
     section_llm:      "2. Model Settings",
@@ -454,6 +599,24 @@ const I18N = {
     report_none:      "No report generated",
     alert_start_fail: "Failed to start analysis: {err}",
     err_sse:          "SSE connection error",
+    section_chat:     "7. Follow-up Chat",
+    chat_placeholder: "Ask a follow-up about the report — press Enter to send",
+    chat_send:        "Send",
+    chat_hint:        "Follow-ups reuse the results above; no code is re-executed. To explore a different angle, re-run the analysis with a new goal.",
+    chat_thinking:    "Thinking...",
+    chat_err:         "Request failed: {err}",
+    chat_empty_input: "Please type a question first",
+    chat_expand:      "Open Chat",
+    chat_collapse:    "Collapse",
+    chat_locked:      "Available after the analysis finishes. Click \"Open Chat\" on the top right to start.",
+    btn_export_pptx:  "Export PPT",
+    btn_exporting:    "Exporting...",
+    export_pptx_fail: "Export failed: {err}",
+    transparency_summary: "View analysis process (Plan / Code / Output)",
+    trans_plan:       "Planner: Analysis Plan",
+    trans_code:       "Coder: Generated Code",
+    trans_stdout:     "Executor: Runtime Output",
+    trans_empty:      "(not produced this run)",
   },
 };
 
@@ -526,6 +689,7 @@ const $ = (s) => document.querySelector(s);
 const dz = $("#dropzone"), fi = $("#fileInput"), goal = $("#goal");
 const runBtn = $("#runBtn"), log = $("#log");
 let fileId = null, fileName = null;
+let currentTaskId = null;   // 追问用: 每次 /analyze 返回后填进来
 
 // ---- Provider switcher ----
 // 前端"服务商"下拉的每个值映射到后端 provider + 预设的 base_url + 默认 model。
@@ -547,8 +711,7 @@ const PROVIDER_PRESETS = {
     model:    "moonshot-v1-32k",
   },
   groq: {
-    backend:  "openai_compatible",
-    base_url: "https://api.groq.com/openai/v1",
+    backend:  "groq",
     model:    "llama-3.3-70b-versatile",
   },
   openai: {
@@ -673,6 +836,38 @@ function resetAgents() {
   log.textContent = ""; log.style.display = "none";
   $("#charts").innerHTML = `<div class="empty">${t("charts_running")}</div>`;
   $("#report").innerHTML = `<div style="color:var(--muted);">${t("report_running")}</div>`;
+  // 新分析开始: 清空追问面板 + 折叠正文 + 禁用导出按钮, 旧 task_id 作废
+  const chatToggleBtn = $("#chatToggleBtn");
+  const chatBody      = $("#chatBody");
+  const chatLocked    = $("#chatLocked");
+  const chatLog       = $("#chatLog");
+  const chatInput     = $("#chatInput");
+  const exportBtn     = $("#exportPptxBtn");
+  if (chatToggleBtn) {
+    chatToggleBtn.disabled = true;
+    chatToggleBtn.setAttribute("data-i18n", "chat_expand");
+    chatToggleBtn.textContent = t("chat_expand");
+  }
+  if (chatBody)   chatBody.classList.add("collapsed");
+  if (chatLocked) chatLocked.style.display = "";
+  if (chatLog)    chatLog.innerHTML = "";
+  if (chatInput)  chatInput.value = "";
+  if (exportBtn) {
+    exportBtn.disabled = true;
+    exportBtn.setAttribute("data-i18n", "btn_export_pptx");
+    exportBtn.textContent = t("btn_export_pptx");
+  }
+  // 透明度面板复位: 隐藏 + 收起
+  const tp = $("#transparencyPanel");
+  if (tp) {
+    tp.hidden = true;
+    tp.removeAttribute("open");
+    const pp = $("#transPlan"), cc = $("#transCode"), ss = $("#transStdout");
+    if (pp) pp.innerHTML = "";
+    if (cc) cc.textContent = "";
+    if (ss) ss.textContent = "";
+  }
+  currentTaskId = null;
 }
 
 function appendLog(line) {
@@ -719,7 +914,9 @@ runBtn.addEventListener("click", async () => {
 
   const providerCfg = buildProviderConfig();
   // 本地预检: 选了云端但没填 key / 选了自定义但没填 URL 或 model, 直接拦下, 别浪费一个 task_id
-  const needsKey = providerCfg.provider === "anthropic" || providerCfg.provider === "openai_compatible";
+  const needsKey = providerCfg.provider === "anthropic"
+                || providerCfg.provider === "openai_compatible"
+                || providerCfg.provider === "groq";
   if (needsKey && !providerCfg.api_key) {
     alert(currentLang === "en"
       ? "Please enter your API key before starting."
@@ -753,6 +950,7 @@ runBtn.addEventListener("click", async () => {
     });
     if (!r.ok) throw new Error(await r.text());
     taskId = (await r.json()).task_id;
+    currentTaskId = taskId;   // 暴露给追问按钮用
   } catch (e) {
     alert(t("alert_start_fail", {err: e.message}));
     runBtn.disabled = false;
@@ -803,6 +1001,11 @@ runBtn.addEventListener("click", async () => {
       const dot = document.querySelector(`.dot[data-agent="${n}"]`);
       if (dot && dot.classList.contains("running")) setAgent(n, "ok");
     });
+    // 分析跑完: 解锁"导出 PPT"和"展开追问"两个按钮, 但不自动展开 (按用户要求)
+    const exportBtnDone     = $("#exportPptxBtn");
+    const chatToggleBtnDone = $("#chatToggleBtn");
+    if (exportBtnDone)     exportBtnDone.disabled = false;
+    if (chatToggleBtnDone) chatToggleBtnDone.disabled = false;
   });
 
   es.addEventListener("error", ev => {
@@ -826,9 +1029,12 @@ function renderResult(p) {
     cdom.innerHTML = `<div class="empty">${t("charts_none")}</div>`;
   } else {
     cdom.innerHTML = "";
+    const b64Map = (p.charts_b64 && typeof p.charts_b64 === "object") ? p.charts_b64 : {};
     p.charts.forEach(fn => {
       const img = document.createElement("img");
-      img.src = `/chart/${encodeURIComponent(fn)}`;
+      // 优先用 base64 (无状态部署必需), 没有 b64 就回退到 /chart/{fn}
+      const b64 = b64Map[fn];
+      img.src = b64 ? `data:image/png;base64,${b64}` : `/chart/${encodeURIComponent(fn)}`;
       img.alt = fn;
       img.title = fn;
       img.addEventListener("click", () => openLightbox(img.src, fn));
@@ -841,6 +1047,36 @@ function renderResult(p) {
   } else {
     rdom.innerHTML = `<div style="color:var(--muted);">${t("report_none")}</div>`;
   }
+  // 透明度面板: Plan / Code / Stdout
+  renderTransparency(p);
+}
+
+function renderTransparency(p) {
+  const panel = $("#transparencyPanel");
+  if (!panel) return;
+  const planBox = $("#transPlan");
+  const codeBox = $("#transCode");
+  const outBox  = $("#transStdout");
+  const empty = `<div class="trans-empty">${t("trans_empty")}</div>`;
+  if (planBox) {
+    planBox.innerHTML = p.plan ? marked.parse(p.plan) : empty;
+  }
+  if (codeBox) {
+    if (p.code && p.code.trim()) {
+      codeBox.textContent = p.code;
+    } else {
+      codeBox.innerHTML = empty;
+    }
+  }
+  if (outBox) {
+    if (p.stdout && p.stdout.trim()) {
+      outBox.textContent = p.stdout;
+    } else {
+      outBox.innerHTML = empty;
+    }
+  }
+  // 分析跑完才显示整块面板
+  panel.hidden = false;
 }
 
 // ====================== Lightbox (点图看大图) ======================
@@ -891,6 +1127,144 @@ openOutputsBtn.addEventListener("click", async () => {
     openOutputsBtn.disabled = false;
   }
 });
+
+// ====================== Chat (追问 / Follow-up) ======================
+const chatInput   = $("#chatInput");
+const chatSendBtn = $("#chatSendBtn");
+const chatLog     = $("#chatLog");
+
+function appendChatBubble(role, content, opts) {
+  opts = opts || {};
+  const b = document.createElement("div");
+  b.className = "chat-bubble " + role + (opts.extraClass ? (" " + opts.extraClass) : "");
+  if (role === "assistant" && !opts.plain) {
+    // 让助手回复支持 markdown
+    try {
+      b.innerHTML = marked.parse(content);
+    } catch (_) {
+      b.textContent = content;
+    }
+  } else {
+    b.textContent = content;
+  }
+  chatLog.appendChild(b);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return b;
+}
+
+async function sendChat() {
+  if (!currentTaskId) return;
+  const msg = chatInput.value.trim();
+  if (!msg) {
+    chatInput.focus();
+    return;
+  }
+  chatInput.value = "";
+  chatSendBtn.disabled = true;
+  appendChatBubble("user", msg, { plain: true });
+
+  // 占位气泡, 请求回来后替换
+  const thinking = appendChatBubble("assistant", t("chat_thinking"),
+    { plain: true, extraClass: "thinking" });
+
+  try {
+    const r = await fetch(`/chat/${currentTaskId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg }),
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(txt || `HTTP ${r.status}`);
+    }
+    const j = await r.json();
+    const reply = (j && j.reply) ? j.reply : "(empty reply)";
+    thinking.classList.remove("thinking");
+    try {
+      thinking.innerHTML = marked.parse(reply);
+    } catch (_) {
+      thinking.textContent = reply;
+    }
+  } catch (e) {
+    thinking.classList.remove("thinking");
+    thinking.classList.add("err");
+    thinking.textContent = t("chat_err", { err: (e && e.message) || e });
+  } finally {
+    chatSendBtn.disabled = false;
+    chatInput.focus();
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+}
+
+chatSendBtn.addEventListener("click", sendChat);
+chatInput.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    sendChat();
+  }
+});
+
+// ---- 展开 / 收起追问面板 ----
+const chatToggleBtn = $("#chatToggleBtn");
+if (chatToggleBtn) {
+  chatToggleBtn.addEventListener("click", () => {
+    const body   = $("#chatBody");
+    const locked = $("#chatLocked");
+    if (!body) return;
+    const nowOpen = body.classList.toggle("collapsed") === false;
+    // collapsed 被加上 -> 关闭; 被移除 -> 打开
+    if (nowOpen) {
+      if (locked) locked.style.display = "none";
+      chatToggleBtn.setAttribute("data-i18n", "chat_collapse");
+      chatToggleBtn.textContent = t("chat_collapse");
+      const ci = $("#chatInput");
+      if (ci) setTimeout(() => ci.focus(), 50);
+    } else {
+      if (locked) locked.style.display = "";
+      chatToggleBtn.setAttribute("data-i18n", "chat_expand");
+      chatToggleBtn.textContent = t("chat_expand");
+    }
+  });
+}
+
+// ---- 一键导出 PPT ----
+const exportPptxBtn = $("#exportPptxBtn");
+if (exportPptxBtn) {
+  exportPptxBtn.addEventListener("click", async () => {
+    if (!currentTaskId) return;
+    exportPptxBtn.disabled = true;
+    const oldText = exportPptxBtn.textContent;
+    exportPptxBtn.setAttribute("data-i18n", "btn_exporting");
+    exportPptxBtn.textContent = t("btn_exporting");
+    try {
+      const r = await fetch(`/export_pptx/${currentTaskId}`, { method: "POST" });
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new Error(txt || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      // 从 Content-Disposition 拿文件名, 拿不到就回退默认名
+      let fn = `analysis_report_${currentTaskId}.pptx`;
+      const cd = r.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
+      if (m && m[1]) fn = decodeURIComponent(m[1]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fn;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      alert(t("export_pptx_fail", { err: (e && e.message) || e }));
+    } finally {
+      exportPptxBtn.setAttribute("data-i18n", "btn_export_pptx");
+      exportPptxBtn.textContent = t("btn_export_pptx");
+      exportPptxBtn.disabled = false;
+    }
+  });
+}
 
 // apply language on load
 applyLang();

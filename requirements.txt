@@ -22,3 +22,6 @@ sse-starlette>=2.1.0      # SSE 流式推送
 # ===== Utilities =====
 pydantic>=2.0.0
 python-dotenv>=1.0.0
+
+# ===== Export =====
+python-pptx>=1.0.0        # 一键导出 PPT

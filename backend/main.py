@@ -14,6 +14,7 @@ FastAPI 后端
 from __future__ import annotations
 
 import asyncio
+import base64
 import glob
 import json
 import os
@@ -40,7 +41,10 @@ from sse_starlette.sse import EventSourceResponse
 
 from workflow.graph import build_graph
 from workflow.state import AnalysisState
-from workflow.i18n import norm_lang
+from workflow.i18n import norm_lang, get_system_prompt, label
+from providers.base import Message
+from providers.factory import get_provider
+from backend.pptx_export import build_report_pptx
 
 
 # ---- 项目根目录: backend/ 的父目录 ----
@@ -79,6 +83,11 @@ class AnalyzeBody(BaseModel):
     provider_config: dict | None = None
 
 
+class ChatBody(BaseModel):
+    """追问接口请求体"""
+    message: str
+
+
 def _summarize_csv(path: str) -> str:
     """生成给 Planner 看的数据摘要 —— 行列数 + 前 5 行 + describe。"""
     df = pd.read_csv(path)
@@ -104,6 +113,33 @@ def _attr(obj: Any, key: str, default=None):
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _format_plan_md(plan: Any, lang: str) -> str:
+    """
+    把 Planner 的 list[dict] 格式化成给"透明度面板"用的 Markdown 列表。
+    兼容形如 [{"step":1,"action":"...","detail":"..."}, ...] 或纯字符串列表。
+    """
+    if not plan:
+        return ""
+    lines: list[str] = []
+    if isinstance(plan, str):
+        return plan
+    if not isinstance(plan, list):
+        return str(plan)
+    for i, item in enumerate(plan, 1):
+        if isinstance(item, dict):
+            n      = item.get("step", i)
+            action = (item.get("action") or "").strip()
+            detail = (item.get("detail") or item.get("description") or "").strip()
+            head = f"**{n}. {action}**" if action else f"**Step {n}**"
+            if detail:
+                lines.append(f"{head} — {detail}")
+            else:
+                lines.append(head)
+        else:
+            lines.append(f"{i}. {str(item).strip()}")
+    return "\n\n".join(lines)
 
 
 def _clean_old_charts() -> int:
@@ -177,7 +213,17 @@ async def analyze(body: AnalyzeBody):
 
     task_id = uuid.uuid4().hex[:12]
     q: queue.Queue = queue.Queue()
-    tasks[task_id] = {"queue": q, "result": None, "done": False, "error": None}
+    tasks[task_id] = {
+        "queue": q,
+        "result": None,
+        "done": False,
+        "error": None,
+        # 追问 (/chat) 用:
+        #   context   —— 分析跑完后塞进去的只读快照 (csv_summary, goal, code, stdout, report, lang, provider_config)
+        #   chat_history —— [{"role": "user"|"assistant", "content": "..."}], 内存态, 重启即丢
+        "context": None,
+        "chat_history": [],
+    }
 
     def progress_cb(event: str, data: str) -> None:
         try:
@@ -216,9 +262,48 @@ async def analyze(body: AnalyzeBody):
             # 前端只需要文件名
             chart_files = [os.path.basename(p) for p in chart_paths]
 
+            # 把用于"追问"的上下文冻结下来, 供后续 /chat 路由使用
+            exec_result = _attr(final, "execution_result", "") or ""
+            code_ran = _attr(final, "code", "") or ""
+            plan_raw = _attr(final, "plan", []) or []
+            plan_md = _format_plan_md(plan_raw, lang)
+
+            # 图表同时打 base64, 让"无状态"部署 (Railway/Render) 也能显示
+            charts_b64: dict[str, str] = {}
+            for p in chart_paths:
+                try:
+                    with open(p, "rb") as fh:
+                        charts_b64[os.path.basename(p)] = base64.b64encode(fh.read()).decode("ascii")
+                except OSError:
+                    # 找不到文件就跳过, 前端会回退到 /chart/{fn} 拉取
+                    pass
+
+            tasks[task_id]["context"] = {
+                "csv_summary": df_summary,
+                "user_goal": body.goal,
+                "code": code_ran,
+                "execution_result": exec_result,
+                "final_report": report,
+                "language": lang,
+                # provider_config 保留 (包含 api_key), 后续追问用同一家 LLM
+                "provider_config": cfg,
+                # 图表绝对路径, 导出 PPT 时要用
+                "chart_paths_abs": list(chart_paths),
+                # 透明度面板要用
+                "plan_md": plan_md,
+            }
+
             tasks[task_id]["result"] = {"report": report, "charts": chart_files}
             q.put({"event": "result", "data": json.dumps(
-                {"report": report, "charts": chart_files}, ensure_ascii=False
+                {
+                    "report": report,
+                    "charts": chart_files,
+                    "charts_b64": charts_b64,
+                    "plan": plan_md,
+                    "code": code_ran,
+                    "stdout": exec_result,
+                },
+                ensure_ascii=False,
             )})
         except Exception as e:
             tasks[task_id]["error"] = repr(e)
@@ -265,6 +350,117 @@ async def result(task_id: str):
     if t["error"]:
         return {"status": "error", "error": t["error"]}
     return {"status": "done", **(t["result"] or {})}
+
+
+@app.post("/chat/{task_id}")
+async def chat(task_id: str, body: ChatBody):
+    """
+    基于已完成的分析做追问 (read-only).
+    - 不会再跑代码, 只用已有的 csv_summary / code / stdout / report 回答
+    - 使用当初跑分析时的同一套 provider_config (同一家 LLM, 同一个 key)
+    - 聊天历史只存在内存中, 后端重启即丢; 对 v1 足够用
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "task_id 未找到")
+    t = tasks[task_id]
+    if not t["done"]:
+        raise HTTPException(409, "分析尚未结束, 请等 result 事件后再提问")
+    if t["error"]:
+        raise HTTPException(409, f"分析失败, 无法追问: {t['error']}")
+    ctx = t.get("context")
+    if not ctx:
+        raise HTTPException(409, "缺少分析上下文, 无法追问 (请重新分析)")
+
+    user_msg = (body.message or "").strip()
+    if not user_msg:
+        raise HTTPException(400, "message 不能为空")
+
+    lang = ctx["language"]
+    base_system = get_system_prompt("chat", lang)
+
+    # 截断过长的执行结果/报告, 避免吃爆 8K 上下文模型的窗口
+    exec_snippet = (ctx.get("execution_result") or "")[-2000:]
+    report_snippet = (ctx.get("final_report") or "")[:4000]
+    code_snippet = (ctx.get("code") or "")[:2000]
+
+    # 把所有上下文拼到 system prompt 里, 当成"你手上的资料", 这样模型不会把它
+    # 误当成"用户的第一条提问"去回答。messages 里只放真实的多轮对话。
+    ref_hdr = "你手上的参考资料如下:" if lang == "zh" else "Reference materials at hand:"
+    system = (
+        f"{base_system}\n\n"
+        f"---\n{ref_hdr}\n\n"
+        f"{label('data_summary', lang)}:\n{ctx['csv_summary']}\n\n"
+        f"{label('analysis_goal', lang)}:\n{ctx['user_goal']}\n\n"
+        f"{label('executed_code', lang)}:\n```python\n{code_snippet}\n```\n\n"
+        f"{label('exec_stdout_ok', lang)}:\n{exec_snippet}\n\n"
+        f"{label('final_report', lang)}:\n{report_snippet}\n"
+    )
+
+    # messages 只放真实对话: 历史 (可空) + 本次用户提问
+    messages: list[Message] = []
+    for turn in t["chat_history"]:
+        r = turn.get("role")
+        c = turn.get("content") or ""
+        if r in ("user", "assistant") and c:
+            messages.append(Message(role=r, content=c))
+    messages.append(Message(role="user", content=user_msg))
+
+    try:
+        provider = get_provider(config=ctx.get("provider_config"))
+        reply = provider.chat(
+            messages,
+            system=system,
+            temperature=0.3,
+            max_tokens=1024,
+        ).strip()
+    except Exception as e:
+        raise HTTPException(500, f"LLM 调用失败: {e!r}")
+
+    # 追加进历史, 方便下一轮上下文连续
+    t["chat_history"].append({"role": "user", "content": user_msg})
+    t["chat_history"].append({"role": "assistant", "content": reply})
+    return {"reply": reply}
+
+
+@app.post("/export_pptx/{task_id}")
+async def export_pptx(task_id: str):
+    """
+    一键把分析结果打包成 PPTX 返回给浏览器下载.
+    复用 tasks[task_id]['context'] 里冻结的 report + chart_paths_abs.
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "task_id 未找到")
+    t = tasks[task_id]
+    if not t["done"]:
+        raise HTTPException(409, "分析还没结束, 不能导出")
+    if t["error"]:
+        raise HTTPException(409, f"分析失败, 无法导出: {t['error']}")
+    ctx = t.get("context")
+    if not ctx:
+        raise HTTPException(409, "缺少分析上下文 (请重新分析)")
+
+    lang = ctx.get("language", "zh")
+    title = "业务数据分析报告" if lang == "zh" else "Business Data Analysis Report"
+
+    out_path = OUTPUTS_DIR / f"report_{task_id}.pptx"
+    try:
+        build_report_pptx(
+            title=title,
+            user_goal=ctx.get("user_goal", ""),
+            report_md=ctx.get("final_report", ""),
+            chart_paths=ctx.get("chart_paths_abs", []),
+            language=lang,
+            out_path=out_path,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"PPT 生成失败: {e!r}")
+
+    download_name = f"analysis_report_{task_id}.pptx"
+    return FileResponse(
+        str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename=download_name,
+    )
 
 
 @app.get("/chart/{filename}")

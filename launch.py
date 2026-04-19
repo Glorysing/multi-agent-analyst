@@ -1,13 +1,6 @@
 """
 Multi-Agent Data Analyst - Smart Launcher
 =========================================
-
-为什么需要这个脚本而不是直接 batch 启动 uvicorn:
-1. 旧版 start.bat 在固定 sleep 3 秒后开浏览器, 但 LangGraph + pandas + ollama 客户端
-   冷启动经常需要 5-15 秒, 浏览器抢跑就会看到 ERR_CONNECTION_REFUSED.
-2. 如果 uvicorn 因为依赖缺失 / .env 错误 / 端口被占用 而启动失败,
-   batch 窗口会瞬间关闭, 用户根本看不到 traceback.
-
 这个脚本做的事:
 1. 在启动前先 try-import 核心依赖, 立刻发现"包装到全局 Python 而不是 venv"这种坑
 2. 检查 8000 端口是否已被占用

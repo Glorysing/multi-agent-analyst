@@ -18,14 +18,15 @@ from .base import BaseLLMProvider
 from .ollama_provider import OllamaProvider
 from .anthropic_provider import AnthropicProvider
 from .openai_provider import OpenAICompatibleProvider
+from .groq_provider import GroqProvider, GROQ_DEFAULT_MODEL
 
 
 # config 字典约定的键 (前端 / 后端/ 工厂 三方共用)
-#   provider    : "ollama" | "anthropic" | "openai_compatible"
+#   provider    : "ollama" | "anthropic" | "openai_compatible" | "groq"
 #   model       : 通用模型名 (Planner / Reviewer / Reporter 用)
 #   coder_model : 代码专用模型名 (Coder 用, 仅 ollama 走这一档)
 #   host        : Ollama 服务地址
-#   api_key     : Anthropic / OpenAI 兼容 用
+#   api_key     : Anthropic / OpenAI 兼容 / Groq 用
 #   base_url    : OpenAI 兼容 用
 
 
@@ -85,6 +86,15 @@ def get_provider(
             api_key=api_key,
             base_url=_pick(config, "base_url", "OPENAI_BASE_URL", "https://api.deepseek.com/v1"),
             model=model_override or _pick(config, "model", "OPENAI_MODEL", "deepseek-chat"),
+        )
+
+    if provider_name == "groq":
+        api_key = _pick(config, "api_key", "GROQ_API_KEY", "")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY 未设置 (前端面板或 .env 里填一个, https://console.groq.com/keys 免费注册)")
+        return GroqProvider(
+            api_key=api_key,
+            model=model_override or _pick(config, "model", "GROQ_MODEL", GROQ_DEFAULT_MODEL),
         )
 
     raise ValueError(f"未知的 provider: {provider_name}")
