@@ -1,194 +1,260 @@
+<div align="center">
+
 # Multi-Agent Data Analyst
 
-[简体中文](README.md) | **English**
+**A multi-agent business analytics workflow — run locally or deploy online in one click**
 
-Upload a CSV. Four LLM agents plan → write code → run it → review → produce a report. Runs entirely on your machine, zero API cost, data never leaves your computer.
+[简体中文](README.md) · **English**
+
+![python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-FF6B6B)
+![LLM](https://img.shields.io/badge/LLM-Ollama%20%7C%20Claude%20%7C%20Groq%20%7C%20DeepSeek-8B5CF6)
+![License](https://img.shields.io/badge/License-MIT-22C55E)
+
+Upload CSV → Planner designs a plan → Coder writes code → Executor runs it → Reviewer checks → Reporter outputs the report
+<br/>Built-in **follow-up chat**, **one-click PPT export**, and **transparency panel**. Runs locally at zero cost, or deploy to Railway in minutes.
+
+</div>
+
+---
+
+## Highlights
+
+| Capability | Description |
+|---|---|
+| **Local-first** | Defaults to Ollama (qwen2.5:14b + qwen2.5-coder:7b). Data never leaves your machine, zero API cost. |
+| **One-click cloud swap** | Ollama / Claude / Groq / DeepSeek / Kimi / SiliconFlow / OpenAI — all switchable from the UI. API keys exist only for the duration of the request; never written to disk or logs. |
+| **Bilingual end-to-end** | Agent prompts, SSE status messages, chart titles & axis labels, Markdown report, and frontend UI all follow the selected language. Toggle top-right. |
+| **Follow-up Chat** | After the report is generated, keep asking — "Why is the South region low?", "Does this hold for Q4?" — the model answers against the frozen report/code/stdout without re-running the pipeline. |
+| **One-click PPT Export** | Report + charts auto-assembled into a 16:9 business-style `.pptx`: cover page, one slide per `##` section, one slide per chart, acknowledgements page. |
+| **Transparency Panel** | A collapsible `<details>` block shows the Planner's step-by-step plan, the exact code Coder generated, and the Executor's full stdout — so anyone can verify the conclusion. |
+| **Sandboxed Execution** | Executor runs code in a subprocess with a 60s timeout, a dangerous-op denylist, and a static lint pass that intercepts known crash patterns (e.g. `sns.heatmap(df)`, `df.astype(float)` on mixed-type frames) before they ever run. |
+| **Smart Retry Routing** | Execution failure → back to **Coder** (fast bugfix, no re-planning); quality failure → back to **Planner** (fresh approach). Max 3 rounds, then force-finalize. |
+| **Railway One-Click Deploy** | `Procfile` + `railway.toml` included. Push to GitHub, connect Railway, get a public URL. Charts are base64-embedded in SSE — no persistent volume needed. |
+
+---
+
+## Three Ways to Use
+
+### 1. Local, Zero Cost (Windows — true one-click)
+
+Best for: sensitive data, fully offline use, frequent long-term use.
+
+Install once:
+- **Python 3.10+** (python.org — check *Add Python to PATH*)
+- **Ollama** (ollama.com), then pull two models:
+  ```powershell
+  ollama pull qwen2.5:14b         # generalist (~9 GB)
+  ollama pull qwen2.5-coder:7b    # coder-specialist (~4.7 GB)
+  ```
+
+Then:
+1. Download the repo zip and extract, or `git clone`.
+2. **Double-click `start.bat`**
+   - First run: auto-creates `.venv`, installs dependencies, copies `.env` (2–5 min, once only).
+   - Later runs: boots instantly, browser opens at `http://127.0.0.1:8000`.
+3. Drop a CSV → type your goal → click Start Analysis.
+
+### 2. Local App + Cloud Model (just want the agent logic, model via API)
+
+Same as above — install Python and double-click `start.bat`. Once running, open the **Model Settings** panel in the browser, choose Claude / Groq / DeepSeek / Kimi / custom, and paste your API key. The key is used only for that request and is never persisted.
+
+**Groq is especially recommended:** sign up free at [console.groq.com/keys](https://console.groq.com/keys). `llama-3.3-70b-versatile` has ~500 ms latency — nearly as fast as a local model.
+
+### 3. Public Demo (Railway + Groq — free, no install for visitors)
+
+Best for: sharing a demo link, letting others try it without installing anything.
+
+1. Fork this repo to your own GitHub.
+2. Go to [railway.app](https://railway.app) → *New Project → Deploy from GitHub repo*.
+3. Select your fork. Railway auto-detects `Procfile` and `railway.toml`.
+4. In Railway **Variables**, add `GROQ_API_KEY` and `LLM_PROVIDER=groq`.
+5. Railway gives you an `xxx.up.railway.app` URL — share it.
+
+Visitors open the URL, pick **Groq** in Model Settings, paste their own Groq key, and get the full experience. Charts are base64-embedded in SSE, so no server-side file storage is needed.
+
+> You can also set `GROQ_API_KEY` as a Railway environment variable so all visitors share one key — at the cost of your own free quota.
+
+---
+
+## macOS / Linux
+
+No shell script is shipped. One command:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python launch.py
+```
+
+`launch.py` starts uvicorn, polls `/healthz` until ready, then opens the browser automatically.
+
+---
 
 ## Architecture
 
 ```
-      CSV Upload
-         │
-         ▼
- ┌───────────────┐   5-7 step analysis plan (JSON)
- │    Planner    │──────────────────────────┐
- └───────────────┘                          │
-                                            ▼
-                                  ┌───────────────┐
-                                  │     Coder     │   pandas + matplotlib code
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                  ┌───────────────┐
-                                  │   Executor    │   subprocess + 60s timeout + denylist
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                  ┌───────────────┐
-                                  │   Reviewer    │   {passed, feedback}
-                                  └───────────────┘
-                                     │         │
-                                   pass      fail (≤3 rounds)
-                                     │         │
-                                     ▼         └────→ back to Planner
-                                  ┌───────────────┐
-                                  │   Reporter    │   final Markdown report
-                                  └───────────────┘
-                                            │
-                                            ▼
-                                   Frontend: charts + report
+                         ┌─────────────────────┐
+          CSV + goal ───▶│       Planner       │  5-7 step analysis plan
+                         └──────────┬──────────┘
+                                    ▼
+                         ┌─────────────────────┐
+                         │        Coder        │  pandas + matplotlib code
+                         └──────────┬──────────┘
+                                    ▼
+                         ┌─────────────────────┐
+                         │      Executor       │  subprocess + 60s timeout + denylist
+                         └──────────┬──────────┘
+                                    ▼
+                         ┌─────────────────────┐  ┌── fail (≤3 rounds)
+                         │      Reviewer       │──┤
+                         └──────────┬──────────┘  └── exec fail → Coder
+                                pass│                  quality fail → Planner
+                                    ▼
+                         ┌─────────────────────┐
+                         │      Reporter       │  Markdown business report
+                         └──────────┬──────────┘
+                                    ▼
+               ┌────────────────────┼────────────────────┐
+               ▼                    ▼                    ▼
+       Frontend SSE render    Follow-up Chat        PPT Export
 ```
 
-## Quick Start
+---
 
-### Windows (true one-click)
+## Three UX Highlights
 
-1. Download the zip from GitHub and extract (or `git clone`).
-2. Double-click `start.bat`.
-   - First run: auto-creates `.venv`, pip-installs dependencies, copies `.env` (2-5 min, once only).
-   - Later runs: boots straight to `http://127.0.0.1:8000`.
+### Transparency Panel
 
-Prerequisites (install once, not bundled):
-- Python 3.10+ with "Add Python to PATH" checked (python.org)
-- Ollama running in the background with models pulled (see step 1 below)
+Below the report, a collapsible "View Analysis Process" section reveals:
+- **Plan** — the Planner's 5–7 step analysis plan
+- **Code** — the exact pandas + matplotlib code that was executed
+- **Stdout** — the Executor's full runtime output (stdout + stderr)
 
-> macOS / Linux: no shell script is shipped. Run manually:
-> `python -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python launch.py`
+This is what makes non-technical users trust the conclusion: they can see exactly how it was derived.
 
-### Manual install
+### Follow-up Chat
 
-```bash
-python -m venv .venv
-# Windows:    .venv\Scripts\Activate.ps1
-# Unix/macOS: source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env     # copy .env.example .env on Windows
-```
+After the report appears, click "Open Follow-up" in the top-right corner and keep asking questions:
+- "Why is the South region performing so poorly?"
+- "Is this conclusion still valid for Q4?"
+- "Which product line should I prioritize?"
 
-### Prepare Ollama (local, free)
+The model answers against the **frozen** data summary + Coder code + Executor stdout + final report — no re-run. To explore a completely different angle, go back to the goal input and start a new run.
 
-```bash
-ollama pull qwen2.5:14b         # generalist (~9 GB)
-ollama pull qwen2.5-coder:7b    # coder-specialist (~4.7 GB)
-ollama list                     # verify the daemon is running
-```
+### One-Click PPT Export
 
-Want to use Anthropic Claude or DeepSeek/OpenAI-compatible instead? Edit `.env`
-and set `LLM_PROVIDER` + the corresponding API key. No code changes required.
+Click "Export PPT" in the report card header. The backend uses `python-pptx` to generate a 16:9 dark-blue business `.pptx`:
+- Cover slide (title + goal + date)
+- Each Markdown `##` section → one slide, with a colored accent bar
+- Each chart → its own slide, centered without distortion
+- Acknowledgements slide
 
-### CLI smoke test
+The file is streamed directly to your browser. No permanent copy is kept on the server.
 
-```bash
-python app_cli.py path/to/your.csv
-python app_cli.py path/to/your.csv "Find sales anomalies" --lang en
-```
-
-### Web UI
-
-```bash
-uvicorn backend.main:app --reload --port 8000
-```
-
-Open http://localhost:8000, switch language with the top-right **中文 / EN** toggle,
-drop a CSV, fill in your goal, click Start Analysis. You'll see live SSE progress,
-the charts, and the final report.
-
-## Features
-
-- **Local-first**: defaults to Ollama. Data never leaves the machine; zero API cost.
-- **One-line cloud swap**: change `LLM_PROVIDER` in `.env` to route every agent
-  to Anthropic Claude or any OpenAI-compatible endpoint (DeepSeek / Groq / 千问 / Kimi / SiliconFlow). Agent code is untouched.
-- **Dedicated coder model**: Coder runs on `qwen2.5-coder:7b` — pandas code quality noticeably better than a generalist 7B.
-- **Bilingual (Chinese / English)** across every surface: agent prompts, SSE status
-  messages, chart titles and axis labels, the final Markdown report, and the frontend UI.
-- **Streaming progress**: SSE pushes per-agent status to the browser in real time.
-- **Sandboxed execution**: Executor runs generated code in a subprocess with a 60s timeout and a denylist on dangerous ops.
-- **Smart retry routing**: when an iteration fails, execution errors go straight back to **Coder** (fast bugfix); quality failures go back to **Planner** (fresh approach) — up to 3 rounds, then force-finalize.
-- **Robust fallbacks**: Planner JSON-parse failure → canned fallback plan. Reviewer LLM crash → pass-through. Reporter crash → minimal readable report from raw stdout.
-- **UTF-8 everywhere**: `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8` forced on the subprocess so Windows doesn't mangle Chinese tracebacks.
+---
 
 ## Tech Stack
 
-| Component          | Tech                                                                  |
-|--------------------|-----------------------------------------------------------------------|
-| Agent orchestration| LangGraph                                                             |
-| Local models       | Ollama (qwen2.5:14b / qwen2.5-coder:7b)                               |
-| Cloud fallback     | Anthropic Claude / OpenAI-compatible (DeepSeek / Groq / 千问 / Kimi / SiliconFlow) |
-| Data processing    | pandas, numpy, matplotlib, seaborn                                    |
-| Backend            | FastAPI + sse-starlette                                               |
-| Frontend           | Vanilla HTML + JS + marked.js                                         |
-| Python             | 3.10+                                                                 |
+| Module | Tech |
+|---|---|
+| Agent orchestration | LangGraph |
+| Local models | Ollama (qwen2.5:14b + qwen2.5-coder:7b) |
+| Cloud providers | Anthropic Claude / Groq / DeepSeek / Moonshot / OpenAI / custom |
+| Data processing | pandas, numpy, matplotlib, seaborn |
+| Backend | FastAPI + sse-starlette + python-pptx |
+| Frontend | Vanilla HTML + JavaScript + marked.js (no build step) |
+| Deployment | Railway (Procfile + railway.toml), or any uvicorn-compatible platform |
+| Python | 3.10+ |
+
+---
 
 ## Directory Layout
 
+<details>
+<summary>Expand</summary>
+
 ```
 multi-agent-analyst/
-├── agents/                      # 4 Agents
-│   ├── planner.py               # 5-7 step analysis plan
-│   ├── coder.py                 # generates pandas + matplotlib code
-│   ├── executor.py              # subprocess runner + safety checks
-│   └── reviewer.py              # decides whether to retry
+├── agents/
+│   ├── planner.py          # 5-7 step analysis plan
+│   ├── coder.py            # pandas + matplotlib code generation
+│   ├── executor.py         # subprocess runner + static lint + denylist
+│   └── reviewer.py         # pass / retry decision
 ├── workflow/
-│   ├── state.py                 # shared AnalysisState
-│   ├── graph.py                 # LangGraph wiring + Reporter node
-│   └── i18n.py                  # bilingual prompts / status / UI strings
-├── providers/                   # LLM abstraction
-│   ├── base.py                  # BaseLLMProvider / Message
+│   ├── state.py            # shared AnalysisState
+│   ├── graph.py            # LangGraph wiring + Reporter node + retry routing
+│   └── i18n.py             # bilingual prompts / status text / UI strings / chat prompts
+├── providers/
+│   ├── base.py             # BaseLLMProvider / Message
+│   ├── factory.py          # get_provider() / get_coder_provider()
 │   ├── ollama_provider.py
 │   ├── anthropic_provider.py
-│   ├── openai_provider.py       # DeepSeek / Groq / OpenAI compatible
-│   └── factory.py               # get_provider() / get_coder_provider()
+│   ├── openai_provider.py  # DeepSeek / Kimi / Qwen / SiliconFlow / OpenAI compatible
+│   └── groq_provider.py    # Groq thin wrapper (recommended for online demo)
 ├── backend/
-│   └── main.py                  # FastAPI + SSE
+│   ├── main.py             # FastAPI + SSE + /chat + /export_pptx + /upload
+│   └── pptx_export.py      # python-pptx: Markdown report → business .pptx
 ├── frontend/
-│   └── index.html               # single-file frontend with language switch
-├── outputs/                     # charts + temp scripts + uploads (auto-generated)
-├── app_cli.py                   # CLI entry (supports --lang)
-├── launch.py                    # cross-platform launcher: uvicorn + healthz poll + browser
-├── start.bat                    # Windows one-click: first run auto-installs venv + deps
+│   └── index.html          # single-file (HTML + CSS + JS + i18n)
+├── outputs/                # runtime: charts / temp scripts / uploads
+├── app_cli.py              # CLI smoke-test entry (--lang zh/en)
+├── launch.py               # cross-platform launcher: uvicorn + healthz poll + open browser
+├── start.bat               # Windows one-click: auto venv + deps on first run
+├── Procfile                # Railway / Heroku start command
+├── railway.toml            # Railway builder + healthcheck config
 ├── requirements.txt
 ├── .env.example
-├── .gitignore
-├── LICENSE                      # MIT
-├── README.md                    # Chinese
-└── README_EN.md                 # this file
+├── LICENSE                 # MIT
+├── README.md               # Chinese
+└── README_EN.md            # this file
 ```
+
+</details>
+
+---
 
 ## `.env` Reference
 
-| Key                    | Purpose                                               | Default                          |
-|------------------------|-------------------------------------------------------|----------------------------------|
-| `LLM_PROVIDER`         | `ollama` / `anthropic` / `openai_compatible`          | `ollama`                         |
-| `OLLAMA_HOST`          | Ollama daemon URL                                     | `http://localhost:11434`         |
-| `OLLAMA_MODEL`         | Generalist model (Planner / Reviewer / Reporter)      | `qwen2.5:14b`                    |
-| `OLLAMA_CODER_MODEL`   | Coder-specialist model (Coder only)                   | `qwen2.5-coder:7b`               |
-| `ANTHROPIC_API_KEY`    | Claude API key                                        | *(empty)*                        |
-| `ANTHROPIC_MODEL`      | Claude model name                                     | `claude-sonnet-4-5`              |
-| `OPENAI_API_KEY`       | OpenAI-compatible API key                             | *(empty)*                        |
-| `OPENAI_BASE_URL`      | OpenAI-compatible endpoint                            | `https://api.deepseek.com/v1`    |
-| `OPENAI_MODEL`         | Model name on that endpoint                           | `deepseek-chat`                  |
-| `MAX_ITERATIONS`       | Reviewer retry ceiling                                | `3`                              |
-| `OUTPUT_LANGUAGE`      | Default output language: `zh` or `en`                 | `zh`                             |
+All `.env` values are **defaults only**. Anything set in the frontend Model Settings panel overrides them for that request and is never written back to `.env`.
+
+| Key | Purpose | Default |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` / `anthropic` / `openai_compatible` / `groq` | `ollama` |
+| `OLLAMA_HOST` | Ollama daemon URL | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Generalist model (Planner / Reviewer / Reporter) | `qwen2.5:14b` |
+| `OLLAMA_CODER_MODEL` | Coder-specialist model | `qwen2.5-coder:7b` |
+| `ANTHROPIC_API_KEY` | Claude API key | *(empty)* |
+| `ANTHROPIC_MODEL` | Claude model name | `claude-sonnet-4-5` |
+| `OPENAI_API_KEY` | OpenAI-compatible API key | *(empty)* |
+| `OPENAI_BASE_URL` | OpenAI-compatible endpoint | `https://api.deepseek.com/v1` |
+| `OPENAI_MODEL` | Model name on that endpoint | `deepseek-chat` |
+| `GROQ_API_KEY` | Groq API key | *(empty)* |
+| `MAX_ITERATIONS` | Reviewer retry ceiling | `3` |
+| `OUTPUT_LANGUAGE` | Default output language: `zh` or `en` | `zh` |
+
+---
 
 ## FAQ
 
-**Q: First start is slow?**
-The first call has to load `qwen2.5:14b` into VRAM (10-20s). Subsequent calls are fast. Keep Ollama running.
+**Q: The first analysis is slow — is that normal?**
+Yes. The first call loads `qwen2.5:14b` into VRAM (10–20s). Subsequent calls are fast. Keep Ollama running in the background.
 
-**Q: Can I use a smaller model?**
-Yes — set `OLLAMA_MODEL=qwen2.5:7b` (or `llama3.1:8b`) in `.env`. Quality drops a bit; speed roughly doubles.
+**Q: Can I use a smaller model to go faster?**
+Yes — set `OLLAMA_MODEL=qwen2.5:7b` (or `llama3.1:8b`) in `.env`. Output quality drops a bit; speed roughly doubles.
 
-**Q: Can I use a cloud model?**
-Sure. Set `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=openai_compatible` +
-`OPENAI_*` (works for DeepSeek, Groq, 千问, Kimi, SiliconFlow, etc.).
+**Q: How do I use a cloud model?**
+Set `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=openai_compatible` + `OPENAI_*` (compatible with DeepSeek, Groq, Qwen, Kimi, SiliconFlow, etc.). For Groq specifically, use `LLM_PROVIDER=groq` + `GROQ_API_KEY`.
 
-**Q: Frontend stuck on "Analyzing..."?**
-Almost always a backend error. Check the `uvicorn` terminal for a traceback, or open
-DevTools → Network → `stream/<task_id>` to see the raw SSE events.
+**Q: The frontend is stuck on "Analyzing..."**
+Almost always a backend error. Check the uvicorn terminal for a traceback, or open DevTools → Network → the `stream/<task_id>` request to read the raw SSE events.
 
-**Q: Chart text shows Chinese characters as squares?**
-Happens on non-Windows systems that don't have Microsoft YaHei / SimHei installed.
-Edit `_RUNNER_TEMPLATE` in `agents/executor.py` and swap in a CJK font that exists on your system (e.g. `Noto Sans CJK SC`, `PingFang SC`, `WenQuanYi Zen Hei`).
+**Q: Chart text shows boxes instead of Chinese characters**
+This happens on non-Windows systems without Microsoft YaHei / SimHei. Edit `_RUNNER_TEMPLATE` in `agents/executor.py` and replace the font with one available on your system (e.g. `Noto Sans CJK SC`, `PingFang SC`, `WenQuanYi Zen Hei`).
+
+**Q: I deployed to Railway but charts aren't showing**
+Make sure you're on the latest commit — chart data is now base64-embedded in SSE events and rendered directly in the browser, with no dependency on server-side file storage.
+
+---
 
 ## License
 
