@@ -41,72 +41,75 @@
 
 ## 快速开始
 
-### 最快 —— 真・一键双击 (Windows)
+### 真・一键双击 (Windows, 推荐)
 
-1. 从 GitHub 下载 zip 并解压 (或 `git clone`)
-2. 双击 `start.bat`
-   - 第一次双击:自动建 `.venv`, 装全部依赖, 拷贝 `.env` (2-5 分钟, 只发生一次)
-   - 以后双击:直接启动, 浏览器自动打开 `http://127.0.0.1:8000`
-3. 看到浏览器弹出上传页面即可。
+1. 准备好两个一次性前置:
+   - **Python 3.10+** —— python.org 下载,装的时候**务必勾选** *Add Python to PATH*
+   - **Ollama** —— ollama.com 下载,装完打开 cmd 拉两个模型 (只用本地不付费的话):
+     ```powershell
+     ollama pull qwen2.5:14b         # 通用推理 (~9 GB)
+     ollama pull qwen2.5-coder:7b    # 代码专用 (~4.7 GB)
+     ```
+     如果只想用云端 API (Claude / DeepSeek),这一步可以跳过。
+2. 从 GitHub 下载 zip 解压 (或 `git clone`)
+3. **双击 `start.bat`**
+   - 第一次双击:自动建 `.venv`、装全部依赖、拷贝 `.env` (2-5 分钟, 只发生一次)
+   - 以后双击:秒启动,浏览器自动弹出 `http://127.0.0.1:8000`
+4. 浏览器里:右上角切中英文 → "**模型设置**" 选 Ollama / Claude / DeepSeek (云端的话直接在面板填 API Key,不写磁盘) → 拖 CSV 进去 → 写分析目标 → 点开始。
 
-**前提 (一次性, 不可跳过)**:
-- Python 3.10+ 已装且勾选了 *Add Python to PATH* (python.org)
-- Ollama 已装且后台运行, 模型已拉 (下面第 1 步)
+就这样,没了。`start.bat` 已经把 venv、pip install、.env、uvicorn 全包了,不用再手动执行任何 powershell 命令。
 
-> macOS / Linux 不再随项目发脚本。想跑自己动手: `python -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python launch.py`
+> **macOS / Linux**: 项目不再随发 `.sh` 脚本。手动跑也很简单:
+> ```bash
+> python3 -m venv .venv
+> .venv/bin/pip install -r requirements.txt
+> .venv/bin/python launch.py
+> ```
 
 ---
 
-### 1. 准备 Ollama 和模型
+### 高级 / 排错: 手动执行各步
 
+正常路径下面这些命令你**都不需要敲** —— `start.bat` 已经替你做了。
+仅在 `start.bat` 没按预期工作、或者你想跑 CLI 烟测时,才会用到。
+
+<details>
+<summary>展开手动步骤</summary>
+
+**重建虚拟环境** (例如依赖装坏了想从头来):
 ```powershell
-# 拉两个模型 (一次即可, 都在本地跑, 数据不出电脑)
-ollama pull qwen2.5:14b         # 通用推理 (~9 GB)
-ollama pull qwen2.5-coder:7b    # 代码专用 (~4.7 GB)
-
-# 确认 Ollama 在后台运行
-ollama list
-```
-
-### 2. 安装项目依赖
-
-```powershell
-cd multi-agent-analyst
+rmdir /s /q .venv
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+**手动跑后端** (调试时想看后端 traceback):
+```powershell
+.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
+```
 
+**CLI 烟测** (不开浏览器,纯命令行验证 Agent 能跑通):
+```powershell
+.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv                 # 中文输出
+.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv --lang en       # 英文
+.venv\Scripts\python.exe app_cli.py examples/sample_sales.csv "找出销售异常点"
+```
+看到终端依次打印 Planner / Coder / Executor / Reviewer / Reporter 完成,最后出现一份 Markdown 报告即 OK。
+
+**改默认 LLM 配置** (前端选择器是请求级覆盖,只对当次分析生效;想改默认值就编辑 `.env`):
 ```powershell
 copy .env.example .env
-# 用 Ollama 跑无需改任何值
-# 想切 Claude / DeepSeek 编辑 .env 中的 LLM_PROVIDER 与对应 API Key
+# 编辑 LLM_PROVIDER / OLLAMA_MODEL / ANTHROPIC_API_KEY 等
 ```
 
-### 4. CLI 烟测 (推荐先跑这一步)
-
-```powershell
-python app_cli.py examples/sample_sales.csv                 # 默认中文输出
-python app_cli.py examples/sample_sales.csv --lang en       # 切英文
-python app_cli.py examples/sample_sales.csv "找出销售异常点"
-```
-
-看到终端打印 Planner / Coder / Executor / Reviewer / Reporter 依次完成,最后出现一份 Markdown 报告即 OK。
-
-### 5. 启动 Web 服务
-
-```powershell
-uvicorn backend.main:app --reload --port 8000
-```
-
-浏览器打开 http://localhost:8000 → 右上角 **中文 / EN** 切语言 → 拖拽 CSV → 填写目标 → 点"开始分析",实时看进度推送、最终图表和报告。语言选择会同步影响图表标题和最终报告。
+</details>
 
 ## 功能特性
 
 - **本地优先**:默认跑 Ollama,数据不出电脑,零 API 费用
-- **一键切换云端**:改 `.env` 的 `LLM_PROVIDER` 即可切到 Claude 或 DeepSeek/OpenAI 兼容,Agent 代码不动
+- **前端即时切模型**:右侧"模型设置"面板三选一 (Ollama / Claude / OpenAI 兼容),API Key 当次请求用完即销毁,不写磁盘不打日志
+- **一键切换云端**:改 `.env` 的 `LLM_PROVIDER` 或直接在前端选,Agent 代码不动
 - **中英双语全链路**:agent prompt / 状态推送 / 图表标题轴标签 / 报告 / 前端 UI 全部跟随选择的语言;前端右上角一键切换并记忆到 localStorage
 - **Coder 用代码专用模型**:`qwen2.5-coder:7b` 生成 pandas 代码比通用模型更稳
 - **SSE 流式进度推送**:前端能实时看到每个 Agent 的状态和消息
@@ -167,6 +170,8 @@ multi-agent-analyst/
 
 ## .env 字段说明
 
+> 这些只是**默认值**。前端"模型设置"面板每次请求都可以覆盖 (provider / model / host / API Key 等),覆盖只影响当次分析,不会写回 `.env`。
+
 | 字段 | 说明 | 默认 |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` / `anthropic` / `openai_compatible` | `ollama` |
@@ -203,11 +208,9 @@ multi-agent-analyst/
 
 ## 验收清单
 
-- [x] `start.bat` 首次双击自动建 venv + 装依赖, 之后直启
-- [x] `python app_cli.py examples/sample_sales.csv` 能跑完并输出报告
-- [x] `uvicorn backend.main:app --port 8000` 能启动
-- [x] 浏览器 http://localhost:8000 能看到界面
+- [x] `start.bat` 首次双击自动建 venv + 装依赖, 之后直启, 浏览器自动打开
 - [x] 前端右上角 **中文 / EN** 可一键切换,UI / 图表 / 报告语言跟随
+- [x] 前端"模型设置"面板可以切 Ollama / Claude / DeepSeek,API Key 不落盘
 - [x] 上传 CSV,点分析,能看到 SSE 进度推送
 - [x] 分析完成后能看到图表和 Markdown 报告
 - [x] `.env` 在 `.gitignore` 中,可以安全 `git init` 推送
