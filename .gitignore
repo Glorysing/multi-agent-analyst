@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 环境变量(含 API Key,绝对不能提交到 git)
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 输出文件
+outputs/
+*.log
+
+# 操作系统
+.DS_Store
+Thumbs.db

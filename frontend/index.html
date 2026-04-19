@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="zh-CN" id="root-html">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="page_title">Multi-Agent 数据分析系统</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-hi: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-2: #a78bfa;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --err: #ef4444;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Microsoft YaHei", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+  header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; margin-bottom: 24px;
+  }
+  header .titlebox h1 {
+    margin: 0 0 4px; font-size: 22px; letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .titlebox .sub { color: var(--muted); font-size: 13px; }
+
+  .lang-switch {
+    display: inline-flex; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; flex-shrink: 0;
+  }
+  .lang-switch button {
+    all: unset; padding: 6px 14px; cursor: pointer; font-size: 13px;
+    color: var(--muted); font-weight: 500;
+  }
+  .lang-switch button.active {
+    background: var(--accent); color: #0f172a; font-weight: 600;
+  }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px; margin-bottom: 18px;
+  }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 8px;
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--accent); background: rgba(56, 189, 248, 0.05);
+  }
+  .upload-zone .hint { color: var(--muted); margin-top: 6px; font-size: 12px; }
+  .upload-zone.has-file { border-style: solid; border-color: var(--ok); }
+
+  input[type=text] {
+    width: 100%; padding: 10px 12px; border-radius: 6px;
+    background: var(--panel-hi); color: var(--text);
+    border: 1px solid var(--border); font-size: 14px;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+
+  button.primary {
+    padding: 10px 22px; border-radius: 6px; border: 0;
+    background: var(--accent); color: #0f172a; font-weight: 600;
+    cursor: pointer; font-size: 14px;
+  }
+  button.primary:hover { filter: brightness(1.1); }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+  .row { display: flex; gap: 12px; align-items: center; }
+  .row > :first-child { flex: 1; }
+
+  .agent-list { list-style: none; padding: 0; margin: 0; }
+  .agent-list li {
+    padding: 10px 12px; margin-bottom: 6px;
+    background: var(--panel-hi); border-radius: 6px;
+    display: flex; align-items: center; gap: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted); flex-shrink: 0;
+  }
+  .dot.pending  { background: #475569; }
+  .dot.running  { background: var(--warn); animation: pulse 1s infinite; }
+  .dot.ok       { background: var(--ok); }
+  .dot.err      { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .agent-msg { color: var(--muted); font-size: 12px; margin-left: auto; max-width: 60%;
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+  .charts img {
+    width: 100%; background: #fff; border-radius: 6px;
+    cursor: zoom-in; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .charts img:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(56,189,248,0.2); }
+  .charts .empty { color: var(--muted); padding: 24px; text-align: center; }
+
+  .charts-toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .charts-toolbar .path {
+    color: var(--muted); font-size: 12px; font-family: ui-monospace, Consolas, monospace;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  button.ghost {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text); font-size: 12px;
+    cursor: pointer; flex-shrink: 0;
+  }
+  button.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- Lightbox (点图看大图) ---- */
+  .lightbox {
+    display: none; position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,0.85); align-items: center; justify-content: center;
+    padding: 40px; cursor: zoom-out;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 95vw; max-height: 95vh; background: #fff; border-radius: 8px;
+    box-shadow: 0 10px 60px rgba(0,0,0,0.6); cursor: default;
+  }
+  .lightbox .lb-close {
+    position: absolute; top: 20px; right: 24px; font-size: 32px;
+    color: #fff; background: none; border: 0; cursor: pointer; line-height: 1;
+    opacity: 0.75;
+  }
+  .lightbox .lb-close:hover { opacity: 1; }
+  .lightbox .lb-caption {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: #e2e8f0; font-size: 13px; background: rgba(0,0,0,0.5);
+    padding: 6px 14px; border-radius: 20px;
+  }
+
+  .report { background: var(--panel-hi); padding: 20px; border-radius: 8px; }
+  .report h2 { margin: 18px 0 8px; color: var(--accent); font-size: 17px; }
+  .report h2:first-child { margin-top: 0; }
+  .report pre { background: #0f172a; padding: 10px; border-radius: 4px; overflow-x: auto; }
+  .report code { background: rgba(56, 189, 248, 0.1); padding: 1px 6px; border-radius: 3px; }
+  .report table { border-collapse: collapse; margin: 10px 0; }
+  .report th, .report td { border: 1px solid var(--border); padding: 6px 10px; }
+
+  .log {
+    font-family: ui-monospace, Consolas, Menlo, monospace;
+    font-size: 12px; color: var(--muted);
+    max-height: 140px; overflow-y: auto;
+    background: #0b1220; padding: 10px; border-radius: 6px;
+    margin-top: 10px; white-space: pre-wrap;
+  }
+  .section-title { font-size: 13px; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ---- Model selector panel ---- */
+  .field-row {
+    display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center;
+    margin-bottom: 10px;
+  }
+  .field-row label { color: var(--muted); font-size: 13px; }
+  .field-row input, .field-row select {
+    width: 100%; padding: 8px 10px; border-radius: 6px;
+    background: var(--panel-hi); color: var(--text);
+    border: 1px solid var(--border); font-size: 13px;
+    font-family: inherit;
+  }
+  .field-row input:focus, .field-row select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .cfg-panel { padding-top: 4px; }
+  .cfg-panel .hint {
+    color: var(--muted); font-size: 12px; margin-top: 6px;
+    padding: 8px 10px; background: rgba(56,189,248,0.06);
+    border-left: 3px solid var(--accent); border-radius: 3px;
+  }
+  .cfg-panel .hint.warn {
+    background: rgba(245,158,11,0.08); border-left-color: var(--warn);
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="titlebox">
+        <h1 data-i18n="title">Multi-Agent 数据分析系统</h1>
+        <div class="sub" data-i18n="subtitle">上传 CSV → Planner / Coder / Executor / Reviewer 四个 Agent 协作 → 输出图表和业务报告</div>
+      </div>
+      <div class="lang-switch" role="tablist" aria-label="Language">
+        <button type="button" data-lang="zh">中文</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_upload">1. 上传数据</div>
+      <div id="dropzone" class="upload-zone">
+        <div id="dz-text" data-i18n="dz_idle">拖拽 CSV 到这里,或点击选择文件</div>
+        <div class="hint" data-i18n="dz_hint">仅支持 .csv / .tsv / .txt,最大 50MB</div>
+        <input type="file" id="fileInput" accept=".csv,.tsv,.txt" hidden>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_llm">2. 模型设置</div>
+      <div class="field-row">
+        <label data-i18n="lbl_provider">服务商</label>
+        <select id="provider">
+          <option value="ollama"             data-i18n="opt_ollama">Ollama (本地, 免费)</option>
+          <option value="anthropic"          data-i18n="opt_anthropic">Anthropic Claude (API)</option>
+          <option value="openai_compatible"  data-i18n="opt_openai">OpenAI 兼容 (DeepSeek / Groq / Moonshot...)</option>
+        </select>
+      </div>
+
+      <!-- Ollama 字段 -->
+      <div id="cfg-ollama" class="cfg-panel">
+        <div class="field-row">
+          <label data-i18n="lbl_model">通用模型</label>
+          <input type="text" id="ollama-model" value="qwen2.5:14b" placeholder="qwen2.5:14b">
+        </div>
+        <div class="field-row">
+          <label data-i18n="lbl_coder_model">代码模型</label>
+          <input type="text" id="ollama-coder-model" value="qwen2.5-coder:7b" placeholder="qwen2.5-coder:7b">
+        </div>
+        <div class="field-row">
+          <label data-i18n="lbl_host">Ollama 地址</label>
+          <input type="text" id="ollama-host" value="http://localhost:11434" placeholder="http://localhost:11434">
+        </div>
+        <div class="hint" data-i18n="hint_ollama">模型必须先 ollama pull 过. 本地跑, 数据不出电脑, 0 费用.</div>
+      </div>
+
+      <!-- Claude 字段 -->
+      <div id="cfg-anthropic" class="cfg-panel" style="display:none">
+        <div class="field-row">
+          <label>API Key</label>
+          <input type="password" id="anthropic-key" placeholder="sk-ant-...">
+        </div>
+        <div class="field-row">
+          <label data-i18n="lbl_model">模型</label>
+          <input type="text" id="anthropic-model" value="claude-sonnet-4-5" placeholder="claude-sonnet-4-5">
+        </div>
+        <div class="hint warn" data-i18n="hint_apikey">API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.</div>
+      </div>
+
+      <!-- OpenAI 兼容字段 -->
+      <div id="cfg-openai" class="cfg-panel" style="display:none">
+        <div class="field-row">
+          <label>API Key</label>
+          <input type="password" id="openai-key" placeholder="sk-...">
+        </div>
+        <div class="field-row">
+          <label data-i18n="lbl_baseurl">Base URL</label>
+          <input type="text" id="openai-baseurl" value="https://api.deepseek.com/v1" placeholder="https://api.deepseek.com/v1">
+        </div>
+        <div class="field-row">
+          <label data-i18n="lbl_model">模型</label>
+          <input type="text" id="openai-model" value="deepseek-chat" placeholder="deepseek-chat">
+        </div>
+        <div class="hint warn" data-i18n="hint_apikey">API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_goal">3. 分析目标</div>
+      <div class="row">
+        <input type="text" id="goal" data-i18n-attr="placeholder:goal_placeholder"
+               placeholder="例如:分析销售趋势,找出表现最好的产品和地区">
+        <button class="primary" id="runBtn" disabled data-i18n="btn_run">开始分析</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_progress">4. 执行进度</div>
+      <ul class="agent-list">
+        <li><span class="dot pending" data-agent="planner"></span>
+            <strong>Planner</strong>
+            <span class="agent-msg" data-msg="planner" data-i18n="waiting">等待开始</span></li>
+        <li><span class="dot pending" data-agent="coder"></span>
+            <strong>Coder</strong>
+            <span class="agent-msg" data-msg="coder" data-i18n="waiting">等待开始</span></li>
+        <li><span class="dot pending" data-agent="executor"></span>
+            <strong>Executor</strong>
+            <span class="agent-msg" data-msg="executor" data-i18n="waiting">等待开始</span></li>
+        <li><span class="dot pending" data-agent="reviewer"></span>
+            <strong>Reviewer</strong>
+            <span class="agent-msg" data-msg="reviewer" data-i18n="waiting">等待开始</span></li>
+        <li><span class="dot pending" data-agent="reporter"></span>
+            <strong>Reporter</strong>
+            <span class="agent-msg" data-msg="reporter" data-i18n="waiting">等待开始</span></li>
+      </ul>
+      <div id="log" class="log" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_charts">5. 图表</div>
+      <div class="charts-toolbar">
+        <div class="path" id="outputsPath" title=""></div>
+        <button class="ghost" id="openOutputsBtn" type="button" data-i18n="btn_open_outputs">打开输出目录</button>
+      </div>
+      <div id="charts" class="charts"><div class="empty" data-i18n="charts_empty">分析完成后这里会显示图表</div></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" data-i18n="section_report">6. 分析报告</div>
+      <div id="report" class="report"><div style="color:var(--muted);" data-i18n="report_empty">分析完成后这里会显示 Markdown 报告</div></div>
+    </div>
+  </div>
+
+  <!-- Lightbox: 点击图表后弹出大图 -->
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Chart preview">
+    <button type="button" class="lb-close" id="lbClose" aria-label="Close">&times;</button>
+    <img id="lbImg" src="" alt="">
+    <div class="lb-caption" id="lbCaption"></div>
+  </div>
+
+<script>
+// ====================== i18n ======================
+const I18N = {
+  zh: {
+    page_title:       "Multi-Agent 数据分析系统",
+    title:            "Multi-Agent 数据分析系统",
+    subtitle:         "上传 CSV → Planner / Coder / Executor / Reviewer 四个 Agent 协作 → 输出图表和业务报告",
+    section_upload:   "1. 上传数据",
+    section_llm:      "2. 模型设置",
+    section_goal:     "3. 分析目标",
+    section_progress: "4. 执行进度",
+    section_charts:   "5. 图表",
+    section_report:   "6. 分析报告",
+    lbl_provider:     "服务商",
+    lbl_model:        "通用模型",
+    lbl_coder_model:  "代码模型",
+    lbl_host:         "Ollama 地址",
+    lbl_baseurl:      "Base URL",
+    opt_ollama:       "Ollama (本地, 免费)",
+    opt_anthropic:    "Anthropic Claude (API)",
+    opt_openai:       "OpenAI 兼容 (DeepSeek / Groq / Moonshot...)",
+    hint_ollama:      "模型必须先 ollama pull 过. 本地跑, 数据不出电脑, 0 费用.",
+    hint_apikey:      "API Key 只用于本次分析, 不写磁盘 / 不打日志. 关页面即销毁.",
+    dz_idle:          "拖拽 CSV 到这里,或点击选择文件",
+    dz_hint:          "仅支持 .csv / .tsv / .txt,最大 50MB",
+    dz_uploading:     "上传中:{name}...",
+    dz_selected:      "已选择:{name} (file_id={id})",
+    dz_upload_fail:   "上传失败,请重试",
+    dz_alert_size:    "文件太大 (>50MB)",
+    dz_alert_upload:  "上传失败:{err}",
+    goal_placeholder: "例如:分析销售趋势,找出表现最好的产品和地区",
+    goal_default:     "全面分析这份数据,找出关键业务洞察",
+    btn_run:          "开始分析",
+    btn_running:      "分析中...",
+    waiting:          "等待开始",
+    running_default:  "运行中...",
+    charts_empty:     "分析完成后这里会显示图表",
+    charts_none:      "本次未生成图表",
+    charts_running:   "分析中...",
+    btn_open_outputs: "打开输出目录",
+    open_outputs_fail:"打开目录失败:{err}",
+    outputs_path:     "输出目录: {path}",
+    cleanup_msg:      "已清理 {n} 张旧图表",
+    report_empty:     "分析完成后这里会显示 Markdown 报告",
+    report_running:   "分析中...",
+    report_none:      "未生成报告",
+    alert_start_fail: "启动分析失败:{err}",
+    err_sse:          "SSE 连接错误",
+  },
+  en: {
+    page_title:       "Multi-Agent Data Analyst",
+    title:            "Multi-Agent Data Analyst",
+    subtitle:         "Upload a CSV → Planner / Coder / Executor / Reviewer collaborate → get charts and a business report",
+    section_upload:   "1. Upload Data",
+    section_llm:      "2. Model Settings",
+    section_goal:     "3. Analysis Goal",
+    section_progress: "4. Progress",
+    section_charts:   "5. Charts",
+    section_report:   "6. Report",
+    lbl_provider:     "Provider",
+    lbl_model:        "Model",
+    lbl_coder_model:  "Coder Model",
+    lbl_host:         "Ollama Host",
+    lbl_baseurl:      "Base URL",
+    opt_ollama:       "Ollama (local, free)",
+    opt_anthropic:    "Anthropic Claude (API)",
+    opt_openai:       "OpenAI-compatible (DeepSeek / Groq / Moonshot...)",
+    hint_ollama:      "You must `ollama pull` the model first. Runs locally, data stays on-device, zero cost.",
+    hint_apikey:      "API key is used only for this run. Never written to disk / logs. Cleared on page close.",
+    dz_idle:          "Drag a CSV here, or click to choose a file",
+    dz_hint:          ".csv / .tsv / .txt only, up to 50MB",
+    dz_uploading:     "Uploading: {name}...",
+    dz_selected:      "Selected: {name} (file_id={id})",
+    dz_upload_fail:   "Upload failed, please retry",
+    dz_alert_size:    "File too large (>50MB)",
+    dz_alert_upload:  "Upload failed: {err}",
+    goal_placeholder: "e.g. Analyze sales trends and find the top products & regions",
+    goal_default:     "Analyze this dataset thoroughly and surface the key business insights.",
+    btn_run:          "Start Analysis",
+    btn_running:      "Analyzing...",
+    waiting:          "Waiting",
+    running_default:  "Running...",
+    charts_empty:     "Charts will appear here when the analysis completes",
+    charts_none:      "No charts were generated this run",
+    charts_running:   "Analyzing...",
+    btn_open_outputs: "Open Output Folder",
+    open_outputs_fail:"Failed to open folder: {err}",
+    outputs_path:     "Output folder: {path}",
+    cleanup_msg:      "Cleaned up {n} old chart(s)",
+    report_empty:     "The Markdown report will appear here when analysis completes",
+    report_running:   "Analyzing...",
+    report_none:      "No report generated",
+    alert_start_fail: "Failed to start analysis: {err}",
+    err_sse:          "SSE connection error",
+  },
+};
+
+function detectInitialLang() {
+  const saved = localStorage.getItem("mad.lang");
+  if (saved === "zh" || saved === "en") return saved;
+  const nav = (navigator.language || "zh").toLowerCase();
+  return nav.startsWith("zh") ? "zh" : "en";
+}
+
+let currentLang = detectInitialLang();
+
+function t(key, vars) {
+  const dict = I18N[currentLang] || I18N.zh;
+  let s = dict[key];
+  if (s === undefined) s = (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+  if (vars) {
+    Object.keys(vars).forEach(k => {
+      s = s.replace(new RegExp("\\{" + k + "\\}", "g"), vars[k]);
+    });
+  }
+  return s;
+}
+
+function applyLang() {
+  document.documentElement.lang = currentLang === "en" ? "en" : "zh-CN";
+  // data-i18n -> textContent
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    el.textContent = t(key);
+  });
+  // data-i18n-attr = "attrName:key" (can comma-separate multiple)
+  document.querySelectorAll("[data-i18n-attr]").forEach(el => {
+    const spec = el.getAttribute("data-i18n-attr");
+    spec.split(",").forEach(pair => {
+      const [attr, key] = pair.split(":").map(s => s.trim());
+      if (attr && key) el.setAttribute(attr, t(key));
+    });
+  });
+  // Title tag
+  document.title = t("page_title");
+  // Active language button
+  document.querySelectorAll(".lang-switch button").forEach(b => {
+    b.classList.toggle("active", b.dataset.lang === currentLang);
+  });
+  // Refresh goal input: only if empty or currently equals the *other* language's default
+  const g = document.getElementById("goal");
+  if (g) {
+    const zhDefault = I18N.zh.goal_default;
+    const enDefault = I18N.en.goal_default;
+    if (!g.value || g.value === zhDefault || g.value === enDefault) {
+      g.value = t("goal_default");
+    }
+  }
+  // Refresh run button if idle
+  const rb = document.getElementById("runBtn");
+  if (rb && !rb.dataset.running) rb.textContent = t("btn_run");
+}
+
+document.querySelectorAll(".lang-switch button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentLang = btn.dataset.lang;
+    localStorage.setItem("mad.lang", currentLang);
+    applyLang();
+  });
+});
+
+// ====================== Core app ======================
+const $ = (s) => document.querySelector(s);
+const dz = $("#dropzone"), fi = $("#fileInput"), goal = $("#goal");
+const runBtn = $("#runBtn"), log = $("#log");
+let fileId = null, fileName = null;
+
+// ---- Provider switcher ----
+// 非敏感字段 (model / host / base_url) 存 localStorage, 下次打开自动回填。
+// API Key 故意不存, 关页面就消失。
+const PROVIDER_FIELDS = {
+  ollama:    ["ollama-model", "ollama-coder-model", "ollama-host"],
+  anthropic: ["anthropic-model"],                   // 不存 anthropic-key
+  openai_compatible: ["openai-baseurl", "openai-model"],  // 不存 openai-key
+};
+const PROVIDER_LS_KEY = "mad.providerCfg";
+
+function loadProviderCfg() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROVIDER_LS_KEY) || "{}");
+    if (saved.provider) $("#provider").value = saved.provider;
+    Object.keys(PROVIDER_FIELDS).forEach(prov => {
+      (PROVIDER_FIELDS[prov] || []).forEach(id => {
+        if (saved[id] !== undefined && $("#" + id)) $("#" + id).value = saved[id];
+      });
+    });
+  } catch (_) { /* ignore */ }
+}
+
+function saveProviderCfg() {
+  const out = { provider: $("#provider").value };
+  Object.keys(PROVIDER_FIELDS).forEach(prov => {
+    (PROVIDER_FIELDS[prov] || []).forEach(id => {
+      const el = $("#" + id);
+      if (el) out[id] = el.value;
+    });
+  });
+  try { localStorage.setItem(PROVIDER_LS_KEY, JSON.stringify(out)); } catch (_) {}
+}
+
+function switchProviderPanel() {
+  const v = $("#provider").value;
+  $("#cfg-ollama").style.display    = v === "ollama"            ? "" : "none";
+  $("#cfg-anthropic").style.display = v === "anthropic"         ? "" : "none";
+  $("#cfg-openai").style.display    = v === "openai_compatible" ? "" : "none";
+}
+
+$("#provider").addEventListener("change", () => {
+  switchProviderPanel();
+  saveProviderCfg();
+});
+
+// 任意字段改动 -> 保存 (API key 因为不在 PROVIDER_FIELDS 里, 不会被存)
+document.querySelectorAll("#cfg-ollama input, #cfg-anthropic input, #cfg-openai input")
+  .forEach(el => el.addEventListener("change", saveProviderCfg));
+
+function buildProviderConfig() {
+  const prov = $("#provider").value;
+  const cfg = { provider: prov };
+  if (prov === "ollama") {
+    cfg.model       = $("#ollama-model").value.trim() || "qwen2.5:14b";
+    cfg.coder_model = $("#ollama-coder-model").value.trim() || "qwen2.5-coder:7b";
+    cfg.host        = $("#ollama-host").value.trim() || "http://localhost:11434";
+  } else if (prov === "anthropic") {
+    cfg.api_key = $("#anthropic-key").value.trim();
+    cfg.model   = $("#anthropic-model").value.trim() || "claude-sonnet-4-5";
+  } else if (prov === "openai_compatible") {
+    cfg.api_key  = $("#openai-key").value.trim();
+    cfg.base_url = $("#openai-baseurl").value.trim();
+    cfg.model    = $("#openai-model").value.trim() || "deepseek-chat";
+  }
+  return cfg;
+}
+
+// 初始化面板 + 回填 localStorage
+loadProviderCfg();
+switchProviderPanel();
+
+function setAgent(name, status, msg) {
+  const dot = document.querySelector(`.dot[data-agent="${name}"]`);
+  const m = document.querySelector(`.agent-msg[data-msg="${name}"]`);
+  if (dot) { dot.className = "dot " + status; }
+  if (m && msg !== undefined) {
+    m.textContent = msg;
+    m.title = msg;
+    m.removeAttribute("data-i18n");   // 一旦被动态写入, 不再受 applyLang 覆盖
+  }
+}
+
+function resetAgents() {
+  ["planner","coder","executor","reviewer","reporter"].forEach(n => {
+    const m = document.querySelector(`.agent-msg[data-msg="${n}"]`);
+    if (m) m.setAttribute("data-i18n", "waiting");
+    setAgent(n, "pending", t("waiting"));
+    // restore i18n binding
+    if (m) m.setAttribute("data-i18n", "waiting");
+  });
+  log.textContent = ""; log.style.display = "none";
+  $("#charts").innerHTML = `<div class="empty">${t("charts_running")}</div>`;
+  $("#report").innerHTML = `<div style="color:var(--muted);">${t("report_running")}</div>`;
+}
+
+function appendLog(line) {
+  log.style.display = "block";
+  log.textContent += line + "\n";
+  log.scrollTop = log.scrollHeight;
+}
+
+// ---- 上传 / Upload ----
+dz.addEventListener("click", () => fi.click());
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+dz.addEventListener("drop", e => {
+  e.preventDefault(); dz.classList.remove("drag");
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fi.addEventListener("change", e => e.target.files[0] && handleFile(e.target.files[0]));
+
+async function handleFile(file) {
+  if (file.size > 50 * 1024 * 1024) { alert(t("dz_alert_size")); return; }
+  const fd = new FormData(); fd.append("file", file);
+  const dzText = $("#dz-text");
+  dzText.textContent = t("dz_uploading", {name: file.name});
+  dzText.removeAttribute("data-i18n");
+  try {
+    const r = await fetch("/upload", { method: "POST", body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    fileId = j.file_id; fileName = j.filename;
+    dzText.textContent = t("dz_selected", {name: j.filename, id: j.file_id});
+    dz.classList.add("has-file");
+    runBtn.disabled = false;
+  } catch (e) {
+    dzText.textContent = t("dz_upload_fail");
+    dz.classList.remove("has-file");
+    runBtn.disabled = true;
+    alert(t("dz_alert_upload", {err: e.message}));
+  }
+}
+
+// ---- 运行 / Run ----
+runBtn.addEventListener("click", async () => {
+  if (!fileId) return;
+
+  const providerCfg = buildProviderConfig();
+  // 如果选了 API 类服务商但没填 key, 本地就拦截, 别浪费 task_id
+  if ((providerCfg.provider === "anthropic" || providerCfg.provider === "openai_compatible")
+      && !providerCfg.api_key) {
+    alert(currentLang === "en"
+      ? "Please enter your API key before starting."
+      : "请先填入 API Key 再开始分析。");
+    return;
+  }
+
+  runBtn.disabled = true;
+  runBtn.dataset.running = "1";
+  runBtn.textContent = t("btn_running");
+  resetAgents();
+
+  let taskId;
+  try {
+    const r = await fetch("/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_id: fileId,
+        goal: goal.value || t("goal_default"),
+        language: currentLang,
+        provider_config: providerCfg,
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    taskId = (await r.json()).task_id;
+  } catch (e) {
+    alert(t("alert_start_fail", {err: e.message}));
+    runBtn.disabled = false;
+    delete runBtn.dataset.running;
+    runBtn.textContent = t("btn_run");
+    return;
+  }
+
+  const es = new EventSource(`/stream/${taskId}`);
+  const agentsOrder = ["planner","coder","executor","reviewer","reporter"];
+  const seen = {};
+
+  function onAgent(name, msg) {
+    const idx = agentsOrder.indexOf(name);
+    for (let i = 0; i < idx; i++) {
+      const prev = agentsOrder[i];
+      const dot = document.querySelector(`.dot[data-agent="${prev}"]`);
+      if (dot && dot.classList.contains("running")) setAgent(prev, "ok");
+    }
+    setAgent(name, "running", msg);
+    seen[name] = true;
+  }
+
+  agentsOrder.forEach(n => es.addEventListener(n, ev => {
+    onAgent(n, ev.data);
+    appendLog(`[${n}] ${ev.data}`);
+  }));
+
+  es.addEventListener("cleanup", ev => {
+    appendLog(`[cleanup] ${t("cleanup_msg", {n: ev.data})}`);
+  });
+
+  es.addEventListener("done", ev => {
+    setAgent("reporter", "ok", ev.data);
+    appendLog(`[done] ${ev.data}`);
+  });
+
+  es.addEventListener("result", ev => {
+    try {
+      const payload = JSON.parse(ev.data);
+      renderResult(payload);
+    } catch (e) { console.error(e); }
+    es.close();
+    runBtn.disabled = false;
+    delete runBtn.dataset.running;
+    runBtn.textContent = t("btn_run");
+    agentsOrder.forEach(n => {
+      const dot = document.querySelector(`.dot[data-agent="${n}"]`);
+      if (dot && dot.classList.contains("running")) setAgent(n, "ok");
+    });
+  });
+
+  es.addEventListener("error", ev => {
+    const msg = ev.data || t("err_sse");
+    appendLog(`[error] ${msg}`);
+    agentsOrder.forEach(n => {
+      const dot = document.querySelector(`.dot[data-agent="${n}"]`);
+      if (dot && dot.classList.contains("running")) setAgent(n, "err", msg);
+    });
+    runBtn.disabled = false;
+    delete runBtn.dataset.running;
+    runBtn.textContent = t("btn_run");
+  });
+
+  es.addEventListener("ping", () => { /* keepalive */ });
+});
+
+function renderResult(p) {
+  const cdom = $("#charts");
+  if (!p.charts || p.charts.length === 0) {
+    cdom.innerHTML = `<div class="empty">${t("charts_none")}</div>`;
+  } else {
+    cdom.innerHTML = "";
+    p.charts.forEach(fn => {
+      const img = document.createElement("img");
+      img.src = `/chart/${encodeURIComponent(fn)}`;
+      img.alt = fn;
+      img.title = fn;
+      img.addEventListener("click", () => openLightbox(img.src, fn));
+      cdom.appendChild(img);
+    });
+  }
+  const rdom = $("#report");
+  if (p.report) {
+    rdom.innerHTML = marked.parse(p.report);
+  } else {
+    rdom.innerHTML = `<div style="color:var(--muted);">${t("report_none")}</div>`;
+  }
+}
+
+// ====================== Lightbox (点图看大图) ======================
+const lb = $("#lightbox"), lbImg = $("#lbImg"), lbCap = $("#lbCaption"), lbClose = $("#lbClose");
+function openLightbox(src, caption) {
+  lbImg.src = src;
+  lbCap.textContent = caption || "";
+  lb.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+function closeLightbox() {
+  lb.classList.remove("open");
+  lbImg.src = "";
+  document.body.style.overflow = "";
+}
+lb.addEventListener("click", e => {
+  // 只在点到背景/关闭按钮时关, 点到图本身不关
+  if (e.target === lb || e.target === lbClose) closeLightbox();
+});
+lbClose.addEventListener("click", closeLightbox);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && lb.classList.contains("open")) closeLightbox();
+});
+
+// ====================== Open outputs folder ======================
+const openOutputsBtn = $("#openOutputsBtn"), outputsPath = $("#outputsPath");
+
+async function loadOutputsPath() {
+  try {
+    const r = await fetch("/outputs_info");
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j && j.path) {
+      outputsPath.textContent = t("outputs_path", {path: j.path});
+      outputsPath.title = j.path;
+    }
+  } catch (_) { /* 忽略, 不阻塞主流程 */ }
+}
+
+openOutputsBtn.addEventListener("click", async () => {
+  openOutputsBtn.disabled = true;
+  try {
+    const r = await fetch("/open_outputs", {method: "POST"});
+    if (!r.ok) throw new Error(await r.text());
+  } catch (e) {
+    alert(t("open_outputs_fail", {err: e.message || e}));
+  } finally {
+    openOutputsBtn.disabled = false;
+  }
+});
+
+// apply language on load
+applyLang();
+loadOutputsPath();
+</script>
+</body>
+</html>
